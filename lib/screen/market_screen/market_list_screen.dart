@@ -99,9 +99,26 @@ class _MarketListScreenState extends State<MarketListScreen> {
           ? Center(child: CircularProgressIndicator())
           : authProvider.markets.isEmpty
               ? Center(
-                  child: Text(
-                    'No markets available',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'No markets available',
+                        style: TextStyle(
+                            fontSize: 18, fontWeight: FontWeight.w500),
+                      ),
+                      if (authProvider.userRole == 'LANDLORD')
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (context) => MarketCreationWizard(),
+                              ),
+                            );
+                          },
+                          child: Text('Create a Market'),
+                        ),
+                    ],
                   ),
                 )
               : ListView.builder(

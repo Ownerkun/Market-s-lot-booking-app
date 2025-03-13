@@ -197,12 +197,6 @@ class AuthProvider with ChangeNotifier {
         return;
       }
 
-      // String? _userRole = 'LANDLORD'; // Hardcode for testing
-      // bool _isLoading = false;
-      // List<dynamic> markets = [
-      //   {"id": 1, "name": "Market 1", "location": "Location 1"}
-      // ]; // Hardcode for testing
-
       // Decrypt the token
       final token = _decrypt(encryptedToken);
 
