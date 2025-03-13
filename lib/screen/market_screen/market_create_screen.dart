@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:market_lot_app/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
 
 class MarketCreationWizard extends StatefulWidget {
   @override
@@ -17,6 +19,69 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
   String _name = '';
   String _type = '';
   String _location = '';
+  LatLng? _selectedLocation;
+
+  GoogleMapController? _mapController;
+  final Set<Marker> _markers = {};
+
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+  }
+
+  void _onMapTapped(LatLng location) {
+    setState(() {
+      _selectedLocation = location;
+      _markers.clear();
+      _markers.add(Marker(
+        markerId: MarkerId('selected_location'),
+        position: location,
+      ));
+    });
+  }
+
+  Future<void> _getCurrentLocation() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Location services are disabled.')),
+      );
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Location permissions are denied.')),
+        );
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Location permissions are permanently denied.')),
+      );
+      return;
+    }
+
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      _selectedLocation = LatLng(position.latitude, position.longitude);
+      _mapController?.animateCamera(
+        CameraUpdate.newLatLng(_selectedLocation!),
+      );
+      _markers.clear();
+      _markers.add(Marker(
+        markerId: MarkerId('selected_location'),
+        position: _selectedLocation!,
+      ));
+    });
+  }
 
   void _submit() async {
     if (!_formKey.currentState!.validate()) {
@@ -29,21 +94,18 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
     try {
-      // Debugging: Log the token
       final token = await authProvider.getToken();
-      print('Token: $token'); // Debugging
-
       if (token == null) {
         throw Exception('No token found. Please log in.');
       }
 
-      // Debugging: Log the request body
       final body = json.encode({
         'name': _name,
         'type': _type,
         'location': _location,
+        'latitude': _selectedLocation?.latitude,
+        'longitude': _selectedLocation?.longitude,
       });
-      print('Request Body: $body'); // Debugging
 
       final response = await http.post(
         Uri.parse('http://localhost:3002/markets'),
@@ -54,18 +116,13 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
         body: body,
       );
 
-      // Debugging: Log the API response
-      print('Response Status Code: ${response.statusCode}'); // Debugging
-      print('Response Body: ${response.body}'); // Debugging
-
       if (response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Market created successfully!')),
         );
-        await authProvider.fetchMarkets(); // Refresh the market list
-        Navigator.of(context).pop(); // Close the wizard
+        await authProvider.fetchMarkets();
+        Navigator.of(context).pop();
       } else {
-        // Handle specific error cases
         final errorMessage =
             json.decode(response.body)['message'] ?? 'Failed to create market.';
         ScaffoldMessenger.of(context).showSnackBar(
@@ -76,7 +133,7 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('An error occurred. Please try again.')),
       );
-      print('Error: $e'); // Debugging
+      print('Error: $e');
     }
   }
 
@@ -87,11 +144,11 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
         title: Text('Create Market'),
       ),
       body: Form(
-        key: _formKey, // Apply the form key to the parent widget
+        key: _formKey,
         child: Stepper(
           currentStep: _currentStep,
           onStepContinue: () {
-            if (_currentStep < 2) {
+            if (_currentStep < 3) {
               setState(() {
                 _currentStep += 1;
               });
@@ -150,6 +207,30 @@ class _MarketCreationWizardState extends State<MarketCreationWizard> {
                 onSaved: (value) {
                   _location = value!;
                 },
+              ),
+            ),
+            Step(
+              title: Text('Market Geolocation'),
+              content: Column(
+                children: [
+                  ElevatedButton(
+                    onPressed: _getCurrentLocation,
+                    child: Text('Use Current Location'),
+                  ),
+                  SizedBox(height: 16),
+                  Container(
+                    height: 300,
+                    child: GoogleMap(
+                      onMapCreated: _onMapCreated,
+                      onTap: _onMapTapped,
+                      initialCameraPosition: CameraPosition(
+                        target: _selectedLocation ?? LatLng(0, 0),
+                        zoom: 15,
+                      ),
+                      markers: _markers,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

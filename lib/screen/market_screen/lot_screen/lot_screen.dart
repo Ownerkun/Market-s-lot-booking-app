@@ -57,8 +57,8 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen> {
                 lot['position']['y'].toDouble(),
               ),
               'size': Size(
-                lot['shape']['width'].toDouble,
-                lot['shape']['height'].toDouble,
+                lot['shape']['width'].toDouble(),
+                lot['shape']['height'].toDouble(),
               ),
             };
           }).toList();
