@@ -50,10 +50,16 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen> {
               'id': lot['id'],
               'name': lot['name'],
               'details': lot['details'],
-              'price': lot['price'],
+              'price': lot['price'].toDouble(),
               'available': lot['available'],
-              'position': Offset(lot['position']['x'], lot['position']['y']),
-              'size': Size(lot['shape']['width'], lot['shape']['height']),
+              'position': Offset(
+                lot['position']['x'].toDouble(),
+                lot['position']['y'].toDouble(),
+              ),
+              'size': Size(
+                lot['shape']['width'].toDouble,
+                lot['shape']['height'].toDouble,
+              ),
             };
           }).toList();
         });
