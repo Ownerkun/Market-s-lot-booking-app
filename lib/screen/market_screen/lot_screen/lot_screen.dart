@@ -1,26 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import 'package:market_lot_app/auth_provider.dart';
+import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
-class LotScreen extends StatefulWidget {
+class MarketLayoutScreen extends StatefulWidget {
   final String marketId;
 
-  LotScreen({required this.marketId});
+  MarketLayoutScreen({required this.marketId});
 
   @override
-  _LotScreenState createState() => _LotScreenState();
+  _MarketLayoutScreenState createState() => _MarketLayoutScreenState();
 }
 
-class _LotScreenState extends State<LotScreen> {
-  List<Lot> lots = [];
-  bool isLoading = true;
-
-  Matrix4 _transform = Matrix4.identity();
-  double _scale = 1.0;
-  Offset _offset = Offset.zero;
-  Offset _startOffset = Offset.zero;
+class _MarketLayoutScreenState extends State<MarketLayoutScreen> {
+  List<Map<String, dynamic>> lots = [];
 
   @override
   void initState() {
@@ -39,135 +33,191 @@ class _LotScreenState extends State<LotScreen> {
       return;
     }
 
+    final url =
+        Uri.parse('http://localhost:3002/markets/${widget.marketId}/lots');
+    final headers = {
+      'Authorization': 'Bearer $token',
+    };
+
     try {
-      final response = await http.get(
-        Uri.parse('http://localhost:3002/markets/${widget.marketId}/lots'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
+      final response = await http.get(url, headers: headers);
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
         setState(() {
-          lots = data.map((lot) => Lot.fromJson(lot)).toList();
-          isLoading = false;
+          lots = data.map((lot) {
+            return {
+              'id': lot['id'],
+              'name': lot['name'],
+              'details': lot['details'],
+              'price': lot['price'],
+              'available': lot['available'],
+              'position': Offset(lot['position']['x'], lot['position']['y']),
+              'size': Size(lot['shape']['width'], lot['shape']['height']),
+            };
+          }).toList();
         });
       } else {
-        throw Exception('Failed to fetch lots: ${response.body}');
+        throw Exception('Failed to fetch lots');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to fetch lots: $e')),
       );
-      print(e); // Debugging
+
+      print(e); //Debugging
     }
   }
 
-  void _onLotTap(Lot lot) {
-    if (Provider.of<AuthProvider>(context, listen: false).userRole ==
-        'TENANT') {
-      // Navigate to details page for tenants
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => LotDetailsScreen(lot: lot),
-        ),
+  void _addLot() {
+    setState(() {
+      lots.add({
+        'id': 'new-lot-${lots.length + 1}', // Temporary ID for new lots
+        'name': 'New Lot',
+        'details': 'Custom lot',
+        'price': 100,
+        'available': true,
+        'position': Offset(0, 0),
+        'size': Size(100, 100),
+      });
+    });
+  }
+
+  void _updateLotPosition(int index, Offset position) {
+    setState(() {
+      lots[index]['position'] = position;
+    });
+  }
+
+  Future<void> _saveLots() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = await authProvider.getToken();
+
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No token found. Please log in.')),
       );
+      return;
     }
-  }
 
-  void _onLotLongPress(Lot lot) {
-    if (Provider.of<AuthProvider>(context, listen: false).userRole ==
-        'LANDLORD') {
-      // Show edit menu for landlords
-      showDialog(
-        context: context,
-        builder: (context) {
-          return AlertDialog(
-            title: Text('Edit Lot'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  title: Text('Edit Details'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _editLotDetails(lot);
-                  },
-                ),
-                ListTile(
-                  title: Text('Delete Lot'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _deleteLot(lot);
-                  },
-                ),
-              ],
-            ),
+    final url =
+        Uri.parse('http://localhost:3002/markets/${widget.marketId}/lots');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    try {
+      for (var lot in lots) {
+        final body = json.encode({
+          'name': lot['name'],
+          'details': lot['details'],
+          'price': lot['price'],
+          'available': lot['available'],
+          'shape': {
+            'width': lot['size'].width,
+            'height': lot['size'].height,
+          },
+          'position': {
+            'x': lot['position'].dx,
+            'y': lot['position'].dy,
+          },
+        });
+
+        if (lot['id'].toString().startsWith('new-lot')) {
+          // Create new lot
+          await http.post(url, headers: headers, body: body);
+        } else {
+          // Update existing lot
+          await http.put(
+            Uri.parse('$url/${lot['id']}'),
+            headers: headers,
+            body: body,
           );
-        },
+        }
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Lots saved successfully!')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save lots: $e')),
       );
     }
   }
 
-  void _editLotDetails(Lot lot) {
-    final nameController = TextEditingController(text: lot.name);
-    final detailsController = TextEditingController(text: lot.details);
-    final priceController = TextEditingController(text: lot.price.toString());
-    final availableController =
-        TextEditingController(text: lot.available.toString());
-
+  void _showLotDetails(Map<String, dynamic> lot) {
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text('Edit Lot Details'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: InputDecoration(labelText: 'Name'),
-                ),
-                TextField(
-                  controller: detailsController,
-                  decoration: InputDecoration(labelText: 'Details'),
-                ),
-                TextField(
-                  controller: priceController,
-                  decoration: InputDecoration(labelText: 'Price'),
-                  keyboardType: TextInputType.number,
-                ),
-                TextField(
-                  controller: availableController,
-                  decoration:
-                      InputDecoration(labelText: 'Available (true/false)'),
-                ),
-              ],
-            ),
+          title: Text(lot['name']),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Details: ${lot['details']}'),
+              Text('Price: \$${lot['price']}'),
+              Text(
+                  'Availability: ${lot['available'] ? 'Available' : 'Not Available'}'),
+            ],
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
+              onPressed: () => Navigator.pop(context),
+              child: Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _editLot(int index) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final lot = lots[index];
+        TextEditingController nameController =
+            TextEditingController(text: lot['name']);
+        TextEditingController detailsController =
+            TextEditingController(text: lot['details']);
+        TextEditingController priceController =
+            TextEditingController(text: lot['price'].toString());
+
+        return AlertDialog(
+          title: Text('Edit Lot'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(labelText: 'Name'),
+              ),
+              TextField(
+                controller: detailsController,
+                decoration: InputDecoration(labelText: 'Details'),
+              ),
+              TextField(
+                controller: priceController,
+                decoration: InputDecoration(labelText: 'Price'),
+                keyboardType: TextInputType.number,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
               child: Text('Cancel'),
             ),
             TextButton(
-              onPressed: () async {
-                final updatedLot = Lot(
-                  id: lot.id,
-                  name: nameController.text,
-                  details: detailsController.text,
-                  price: double.parse(priceController.text),
-                  available: availableController.text.toLowerCase() == 'true',
-                  shape: lot.shape,
-                  position: lot.position,
-                );
-
-                await _updateLotDetails(updatedLot);
+              onPressed: () {
+                setState(() {
+                  lots[index]['name'] = nameController.text;
+                  lots[index]['details'] = detailsController.text;
+                  lots[index]['price'] = double.parse(priceController.text);
+                });
                 Navigator.pop(context);
               },
               child: Text('Save'),
@@ -178,352 +228,76 @@ class _LotScreenState extends State<LotScreen> {
     );
   }
 
-  void _deleteLot(Lot lot) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    try {
-      final response = await http.delete(
-        Uri.parse(
-            'http://localhost:3002/markets/${widget.marketId}/lots/${lot.id}'),
-        headers: {
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          lots.removeWhere((l) => l.id == lot.id);
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lot deleted successfully!')),
-        );
-      } else {
-        throw Exception('Failed to delete lot: ${response.body}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete lot: $e')),
-      );
-      print(e); // Debugging
-    }
-  }
-
-  void _addLot() async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse('http://localhost:3002/markets/${widget.marketId}/lots'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'name': 'Lot ${lots.length + 1}',
-          'details': 'Details about Lot ${lots.length + 1}',
-          'price': 100.0,
-          'available': true,
-          'shape': {'width': 100.0, 'height': 50.0},
-          'position': {'x': 0.0, 'y': 0.0}, // Default position
-        }),
-      );
-
-      if (response.statusCode == 201) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        setState(() {
-          lots.add(Lot.fromJson(data)); // Use the ID returned by the backend
-        });
-      } else {
-        throw Exception('Failed to add lot: ${response.body}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add lot: $e')),
-      );
-      print(e); // Debugging
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isLandlord =
-        Provider.of<AuthProvider>(context).userRole == 'LANDLORD';
+    final authProvider = Provider.of<AuthProvider>(context);
+    final isLandlord = authProvider.userRole == 'LANDLORD';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Market Lots'),
+        title: Text('Market Layout'),
+        actions: isLandlord
+            ? [
+                IconButton(
+                  icon: Icon(Icons.save),
+                  onPressed: _saveLots,
+                ),
+              ]
+            : null,
       ),
-      body: isLoading
-          ? Center(child: CircularProgressIndicator())
-          : GestureDetector(
-              onScaleStart: (details) {
-                _startOffset = details.focalPoint;
-              },
-              onScaleUpdate: (details) {
-                setState(() {
-                  _scale = details.scale;
-                  _offset = details.focalPoint - _startOffset;
-                  _transform = Matrix4.identity()
-                    ..translate(_offset.dx, _offset.dy)
-                    ..scale(_scale);
-                });
-              },
-              onScaleEnd: (details) {
-                setState(() {
-                  _scale = 1.0;
-                  _offset = Offset.zero;
-                });
-              },
-              child: Transform(
-                transform: _transform,
-                child: Stack(
-                  children: [
-                    // Canvas Background
-                    Container(
-                      color: Colors.grey[200],
+      body: Stack(
+        children: [
+          // Market Layout Background (You can replace this with an actual image or design)
+          Container(
+            color: Colors.grey[200],
+          ),
+          // Draggable Lots
+          for (var i = 0; i < lots.length; i++)
+            Positioned(
+              left: lots[i]['position'].dx,
+              top: lots[i]['position'].dy,
+              child: GestureDetector(
+                onTap: () {
+                  if (!isLandlord) {
+                    _showLotDetails(lots[i]);
+                  }
+                },
+                onLongPress: () {
+                  if (isLandlord) {
+                    _editLot(i);
+                  }
+                },
+                onPanUpdate: isLandlord
+                    ? (details) {
+                        setState(() {
+                          lots[i]['position'] += details.delta;
+                        });
+                      }
+                    : null,
+                child: Container(
+                  width: lots[i]['size'].width,
+                  height: lots[i]['size'].height,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.5),
+                    border: Border.all(color: Colors.blue),
+                  ),
+                  child: Center(
+                    child: Text(
+                      lots[i]['name'],
+                      style: TextStyle(color: Colors.white),
                     ),
-                    // Lots
-                    for (final lot in lots)
-                      Positioned(
-                        left: lot.position['x'],
-                        top: lot.position['y'],
-                        child: isLandlord
-                            ? Draggable(
-                                feedback: Material(
-                                  child: Container(
-                                    width: lot.shape['width'],
-                                    height: lot.shape['height'],
-                                    color: Colors.blue.withOpacity(0.5),
-                                    child: Center(
-                                      child: Text(
-                                        lot.name,
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                childWhenDragging:
-                                    Container(), // Hide the original lot while dragging
-                                child: GestureDetector(
-                                  onTap: () => _onLotTap(lot),
-                                  onLongPress: () => _onLotLongPress(lot),
-                                  child: Container(
-                                    width: lot.shape['width'],
-                                    height: lot.shape['height'],
-                                    color: Colors.blue,
-                                    child: Center(
-                                      child: Text(
-                                        lot.name,
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                onDragEnd: (details) {
-                                  setState(() {
-                                    lot.position['x'] = details.offset.dx;
-                                    lot.position['y'] = details.offset.dy;
-                                  });
-                                  // Save the new position to the database
-                                  _updateLotPosition(lot);
-                                },
-                              )
-                            : GestureDetector(
-                                onTap: () => _onLotTap(lot),
-                                child: Container(
-                                  width: lot.shape['width'],
-                                  height: lot.shape['height'],
-                                  color: Colors.blue,
-                                  child: Center(
-                                    child: Text(
-                                      lot.name,
-                                      style: TextStyle(color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                      ),
-                  ],
+                  ),
                 ),
               ),
             ),
+        ],
+      ),
       floatingActionButton: isLandlord
           ? FloatingActionButton(
               onPressed: _addLot,
-              child: Icon(Icons.add, color: Colors.white),
-              backgroundColor: Colors.blueAccent,
-              elevation: 5,
-              tooltip: 'Add Lot',
+              child: Icon(Icons.add),
             )
           : null,
-    );
-  }
-
-  Future<void> _updateLotDetails(Lot lot) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    try {
-      final response = await http.put(
-        Uri.parse(
-            'http://localhost:3002/markets/${widget.marketId}/lots/${lot.id}'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'name': lot.name,
-          'details': lot.details,
-          'price': lot.price,
-          'available': lot.available,
-          'shape': lot.shape,
-          'position': lot.position,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          final index = lots.indexWhere((l) => l.id == lot.id);
-          if (index != -1) {
-            lots[index] = lot;
-          }
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lot updated successfully!')),
-        );
-      } else {
-        throw Exception('Failed to update lot: ${response.body}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update lot: $e')),
-      );
-    }
-  }
-
-  Future<void> _updateLotPosition(Lot lot) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    try {
-      final response = await http.put(
-        Uri.parse(
-            'http://localhost:3002/markets/${widget.marketId}/lots/${lot.id}'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: json.encode({
-          'position': lot.position,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Lot position updated successfully!')),
-        );
-      } else {
-        throw Exception('Failed to update lot position: ${response.body}');
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to update lot position: $e')),
-      );
-      print(e); // Debugging
-    }
-  }
-}
-
-class Lot {
-  final String id;
-  final String name;
-  final String details;
-  final double price;
-  final bool available;
-  final Map<String, double> shape;
-  final Map<String, double> position;
-
-  Lot({
-    required this.id,
-    required this.name,
-    required this.details,
-    required this.price,
-    required this.available,
-    required this.shape,
-    required this.position,
-  });
-
-  factory Lot.fromJson(Map<String, dynamic> json) {
-    return Lot(
-      id: json['id'],
-      name: json['name'],
-      details: json['details'],
-      price: json['price'].toDouble(), // Ensure price is double
-      available: json['available'],
-      shape: {
-        'width': json['shape']['width'].toDouble(), // Convert int to double
-        'height': json['shape']['height'].toDouble(), // Convert int to double
-      },
-      position: {
-        'x': json['position']['x'].toDouble(), // Convert int to double
-        'y': json['position']['y'].toDouble(), // Convert int to double
-      },
-    );
-  }
-}
-
-class LotDetailsScreen extends StatelessWidget {
-  final Lot lot;
-
-  LotDetailsScreen({required this.lot});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(lot.name),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Details: ${lot.details}'),
-            Text('Price: \$${lot.price}'),
-            Text('Available: ${lot.available ? 'Yes' : 'No'}'),
-          ],
-        ),
-      ),
     );
   }
 }

@@ -132,7 +132,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
                         onTap: () {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (context) =>
-                                LotScreen(marketId: market['id']),
+                                MarketLayoutScreen(marketId: market['id']),
                           ));
                         },
                       ),
