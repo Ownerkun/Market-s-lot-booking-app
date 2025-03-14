@@ -21,6 +21,8 @@ class AuthProvider with ChangeNotifier {
   String? _userRole;
   String? get userRole => _userRole;
 
+  bool get isLandlord => _userRole == 'LANDLORD';
+
   String? _userId;
   String? get userId => _userId;
 
@@ -295,6 +297,58 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (error) {
       throw Exception('Failed to update profile: $error');
+    }
+  }
+
+  Future<void> updateLot({
+    required String marketId,
+    required String lotId,
+    required String name,
+    required String details,
+    required double price,
+    required bool available,
+    required Size size,
+    required Offset position,
+  }) async {
+    final token = await getToken(); // Ensure this is used
+
+    if (token == null) {
+      throw Exception('No token found. Please log in.');
+    }
+
+    final url =
+        Uri.parse('http://localhost:3002/markets/$marketId/lots/$lotId');
+    final headers = {
+      'Authorization': 'Bearer $token', // Use the token here
+      'Content-Type': 'application/json',
+    };
+
+    final body = json.encode({
+      'name': name,
+      'details': details,
+      'price': price,
+      'available': available,
+      'shape': {
+        'width': size.width,
+        'height': size.height,
+      },
+      'position': {
+        'x': position.dx,
+        'y': position.dy,
+      },
+    });
+
+    try {
+      final response = await http.put(url, headers: headers, body: body);
+
+      if (response.statusCode == 200) {
+        // Notify listeners or update local state if needed
+        notifyListeners();
+      } else {
+        throw Exception('Failed to update lot: ${response.body}');
+      }
+    } catch (e) {
+      throw Exception('Failed to update lot: $e');
     }
   }
 }
