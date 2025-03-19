@@ -275,7 +275,6 @@ class AuthProvider with ChangeNotifier {
       'firstName': firstName,
       'lastName': lastName,
       'birthDate': birthDate?.toUtc().toIso8601String(),
-      'profilePicture': profilePicture,
     });
 
     try {

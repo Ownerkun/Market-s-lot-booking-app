@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:table_calendar/table_calendar.dart';
+import 'package:market_lot_app/auth_provider.dart';
+import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class LotDetailsScreen extends StatelessWidget {
   final Map<String, dynamic> lot;
@@ -65,8 +70,82 @@ class LotDetailsScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _bookLot(BuildContext context, DateTime selectedDate) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = await authProvider.getToken();
+
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No token found. Please log in.')),
+      );
+      return;
+    }
+
+    final url = Uri.parse('http://localhost:3002/bookings');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    final body = json.encode({
+      'lotId': lot['id'],
+      'date': selectedDate.toIso8601String(),
+    });
+
+    try {
+      final response = await http.post(url, headers: headers, body: body);
+
+      if (response.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Booking requested successfully!')),
+        );
+      } else {
+        throw Exception('Failed to request booking: ${response.body}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to request booking: $e')),
+      );
+    }
+  }
+
+  Future<void> _cancelBooking(BuildContext context, String bookingId) async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = await authProvider.getToken();
+
+    if (token == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No token found. Please log in.')),
+      );
+      return;
+    }
+
+    final url = Uri.parse('http://localhost:3002/bookings/$bookingId/cancel');
+    final headers = {
+      'Authorization': 'Bearer $token',
+    };
+
+    try {
+      final response = await http.put(url, headers: headers);
+
+      if (response.statusCode == 200) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Booking cancelled successfully!')),
+        );
+      } else {
+        throw Exception('Failed to cancel booking: ${response.body}');
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to cancel booking: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    DateTime selectedDate = DateTime.now();
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Lot Details'),
@@ -150,6 +229,23 @@ class LotDetailsScreen extends StatelessWidget {
                       color: lot['available'] ? Colors.green : Colors.red,
                     ),
                   ),
+                  SizedBox(height: 16),
+                  Text(
+                    'Select Date:',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  TableCalendar(
+                    firstDay: DateTime.now(),
+                    lastDay: DateTime.now().add(Duration(days: 365)),
+                    focusedDay: selectedDate,
+                    onDaySelected: (selectedDay, focusedDay) {
+                      selectedDate = selectedDay;
+                    },
+                  ),
                 ],
               ),
             ),
@@ -160,12 +256,8 @@ class LotDetailsScreen extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () {
-                  // Handle booking logic here
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                        content: Text('Booking requested for ${lot['name']}')),
-                  );
+                onPressed: () async {
+                  await _bookLot(context, selectedDate);
                 },
                 style: ElevatedButton.styleFrom(
                   padding: EdgeInsets.symmetric(vertical: 16),

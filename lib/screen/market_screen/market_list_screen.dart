@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:market_lot_app/screen/market_screen/lot_screen/market_layout_map_screen.dart';
+import 'package:market_lot_app/screen/market_screen/market_layout_map_screen.dart';
 import 'package:market_lot_app/screen/market_screen/market_create_screen.dart';
 import 'package:market_lot_app/screen/profile/edit_profile_screen.dart';
 import 'package:provider/provider.dart';
