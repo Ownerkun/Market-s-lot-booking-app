@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:market_lot_app/auth_provider.dart';
 import 'package:market_lot_app/market_provider.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_list_view.dart';
-import 'package:market_lot_app/screen/market_screen/market_map_view.dart';
+import 'package:market_lot_app/screen/market_screen/lot_screen/lot_map_view.dart';
 import 'package:provider/provider.dart';
 
 class MarketLayoutScreen extends StatefulWidget {
