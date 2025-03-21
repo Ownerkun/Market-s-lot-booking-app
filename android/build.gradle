@@ -1,3 +1,6 @@
+project.ext.agpVersion = '8.1.0'
+project.ext.kotlinVersion = '1.9.20'
+
 buildscript {
     ext.kotlin_version = '1.9.20'
     repositories {
@@ -5,7 +8,7 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath "com.android.tools.build:gradle:8.4.2" // Update to a supported version
+        classpath 'com.android.tools.build:gradle:8.1.0'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
     }
 }
@@ -28,4 +31,3 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
-
