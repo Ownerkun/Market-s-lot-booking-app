@@ -315,8 +315,7 @@ class AuthProvider with ChangeNotifier {
       throw Exception('No token found. Please log in.');
     }
 
-    final url =
-        Uri.parse('http://localhost:3002/markets/$marketId/lots/$lotId');
+    final url = Uri.parse('http://localhost:3002/lots/$lotId');
     final headers = {
       'Authorization': 'Bearer $token', // Use the token here
       'Content-Type': 'application/json',
