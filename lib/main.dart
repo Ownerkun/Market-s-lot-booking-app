@@ -39,6 +39,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/home': (context) => MarketListScreen(),
       },
+      debugShowCheckedModeBanner: false,
     );
   }
 }
