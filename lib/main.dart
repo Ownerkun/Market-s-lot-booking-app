@@ -32,14 +32,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Market Booking App',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        primarySwatch: Colors.blue,
+        fontFamily: 'Poppins',
+        primaryColor: Colors.green,
+        colorScheme: ColorScheme.light(primary: Colors.green),
       ),
       home: AuthScreen(),
       routes: {
         '/home': (context) => MarketListScreen(),
       },
-      debugShowCheckedModeBanner: false,
     );
   }
 }

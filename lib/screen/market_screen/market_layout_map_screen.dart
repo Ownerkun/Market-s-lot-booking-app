@@ -437,6 +437,7 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
                               ),
                             );
                           } catch (e) {
+                            print('Error: $e');
                             ScaffoldMessenger.of(this.context).showSnackBar(
                               SnackBar(
                                 content: Text('Failed to update lot: $e'),

@@ -8,7 +8,8 @@ class AuthScreen extends StatefulWidget {
   _AuthScreenState createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
+class _AuthScreenState extends State<AuthScreen>
+    with SingleTickerProviderStateMixin {
   bool isLogin = true;
   bool obscurePassword = true;
   final _formKey = GlobalKey<FormState>();
@@ -18,10 +19,37 @@ class _AuthScreenState extends State<AuthScreen> {
   final _lastNameController = TextEditingController();
   String? _selectedRole;
   DateTime? _birthDate;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 300),
+    );
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
+    );
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    super.dispose();
+  }
 
   void _toggleAuthMode() {
     setState(() {
       isLogin = !isLogin;
+      _animationController.reset();
+      _animationController.forward();
     });
   }
 
@@ -55,7 +83,10 @@ class _AuthScreenState extends State<AuthScreen> {
         SnackBar(
           content: Text(authProvider.errorMessage!),
           behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red,
+          backgroundColor: Colors.red.shade700,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: EdgeInsets.all(10),
         ),
       );
     }
@@ -64,9 +95,22 @@ class _AuthScreenState extends State<AuthScreen> {
   Future<void> _selectBirthDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: DateTime.now()
+          .subtract(Duration(days: 365 * 18)), // Defaulting to 18 years ago
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.green,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null && picked != _birthDate) {
       setState(() {
@@ -75,237 +119,440 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
+  InputDecoration _buildInputDecoration(String label, IconData? prefixIcon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.grey.shade700),
+      prefixIcon:
+          prefixIcon != null ? Icon(prefixIcon, color: Colors.green) : null,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(15),
+        borderSide: BorderSide(color: Colors.green, width: 2),
+      ),
+      filled: true,
+      fillColor: Colors.grey.shade50,
+      contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: EdgeInsets.all(20.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    'EasyMarket',
-                    style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 20),
-                  Container(
-                    padding: EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black12, blurRadius: 10),
-                      ],
-                    ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.green.shade100, Colors.white],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              child: Padding(
+                padding: EdgeInsets.all(20.0),
+                child: FadeTransition(
+                  opacity: _fadeAnimation,
+                  child: Form(
+                    key: _formKey,
                     child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            TextButton(
-                              onPressed: _toggleAuthMode,
-                              child: Text(
-                                'Create Account',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isLogin ? Colors.grey : Colors.black,
-                                ),
-                              ),
-                            ),
-                            TextButton(
-                              onPressed: _toggleAuthMode,
-                              child: Text(
-                                'Log In',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: isLogin ? Colors.black : Colors.grey,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 10),
-                        Text(
-                          isLogin ? 'Welcome Back' : 'Create Account',
-                          style: TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.bold),
-                        ),
-                        SizedBox(height: 5),
-                        Text('Fill out the form below.'),
-                        SizedBox(height: 10),
-                        TextFormField(
-                          controller: _emailController,
-                          decoration: InputDecoration(
-                            labelText: 'Email',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                  20), // Match button roundness
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value!.isEmpty || !value.contains('@')) {
-                              return 'Please enter a valid email address.';
-                            }
-                            return null;
-                          },
-                        ),
-                        SizedBox(height: 10),
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: obscurePassword,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                  20), // Match button roundness
-                            ),
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                obscurePassword
-                                    ? Icons.visibility_off
-                                    : Icons.visibility,
-                              ),
-                              onPressed: () {
-                                setState(() {
-                                  obscurePassword = !obscurePassword;
-                                });
-                              },
-                            ),
-                          ),
-                          validator: (value) {
-                            if (value!.isEmpty || value.length < 6) {
-                              return 'Password must be at least 6 characters long.';
-                            }
-                            return null;
-                          },
-                        ),
-                        if (!isLogin) ...[
-                          SizedBox(height: 10),
-                          TextFormField(
-                            controller: _firstNameController,
-                            decoration: InputDecoration(
-                              labelText: 'First Name',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                    20), // Match button roundness
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value!.isEmpty) {
-                                return 'Please enter your first name.';
-                              }
-                              return null;
-                            },
-                          ),
-                          SizedBox(height: 10),
-                          TextFormField(
-                            controller: _lastNameController,
-                            decoration: InputDecoration(
-                              labelText: 'Last Name',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                    20), // Match button roundness
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value!.isEmpty) {
-                                return 'Please enter your last name.';
-                              }
-                              return null;
-                            },
-                          ),
-                          SizedBox(height: 10),
-                          DropdownButtonFormField<String>(
-                            value: _selectedRole,
-                            decoration: InputDecoration(
-                              labelText: 'Role',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                    20), // Match button roundness
-                              ),
-                            ),
-                            items: ['TENANT', 'LANDLORD'].map((String role) {
-                              return DropdownMenuItem<String>(
-                                value: role,
-                                child: Text(role),
-                              );
-                            }).toList(),
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedRole = value;
-                              });
-                            },
-                            validator: (value) {
-                              if (value == null) {
-                                return 'Please select a role.';
-                              }
-                              return null;
-                            },
-                          ),
-                          SizedBox(height: 10),
-                          TextFormField(
-                            decoration: InputDecoration(
-                              labelText: 'Birth Date',
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(
-                                    20), // Match button roundness
-                              ),
-                            ),
-                            readOnly: true,
-                            controller: TextEditingController(
-                              text: _birthDate != null
-                                  ? DateFormat('yyyy-MM-dd').format(_birthDate!)
-                                  : '',
-                            ),
-                            onTap: () => _selectBirthDate(context),
-                            validator: (value) {
-                              if (_birthDate == null) {
-                                return 'Please select your birth date.';
-                              }
-                              return null;
-                            },
-                          ),
-                        ],
-                        SizedBox(height: 20),
-                        ElevatedButton(
-                          onPressed: _submit,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            padding: EdgeInsets.symmetric(
-                                vertical: 12, horizontal: 50),
-                          ),
-                          child: Text(isLogin ? 'Sign In' : 'Get Started'),
-                        ),
-                        SizedBox(height: 10),
-                        Text('Or sign up with'),
-                        SizedBox(height: 10),
+                        // Logo or App Name with icon
                         Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            IconButton(
-                              icon: Icon(Icons.g_mobiledata, size: 32),
-                              onPressed: () {},
+                            Icon(
+                              Icons.shopping_cart,
+                              size: 36,
+                              color: Colors.green.shade700,
                             ),
-                            SizedBox(width: 20),
-                            IconButton(
-                              icon: Icon(Icons.apple, size: 32),
-                              onPressed: () {},
+                            SizedBox(width: 10),
+                            Text(
+                              'EasyMarket',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.green.shade700,
+                                letterSpacing: 1.2,
+                              ),
                             ),
                           ],
                         ),
-                        if (isLogin)
-                          TextButton(
-                            onPressed: () {},
-                            child: Text('Forgot Password?'),
+                        SizedBox(height: screenHeight * 0.03),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 30),
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.08),
+                                blurRadius: 20,
+                                offset: Offset(0, 10),
+                              ),
+                            ],
                           ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Auth mode selector
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade100,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          if (!isLogin) _toggleAuthMode();
+                                        },
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(
+                                              vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: isLogin
+                                                ? Colors.green
+                                                : Colors.transparent,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            'Sign In',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: isLogin
+                                                  ? Colors.white
+                                                  : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: GestureDetector(
+                                        onTap: () {
+                                          if (isLogin) _toggleAuthMode();
+                                        },
+                                        child: Container(
+                                          padding: EdgeInsets.symmetric(
+                                              vertical: 12),
+                                          decoration: BoxDecoration(
+                                            color: !isLogin
+                                                ? Colors.green
+                                                : Colors.transparent,
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                          child: Text(
+                                            'Sign Up',
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              color: !isLogin
+                                                  ? Colors.white
+                                                  : Colors.grey.shade700,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(height: 24),
+
+                              // Welcome Text
+                              Text(
+                                isLogin ? 'Welcome Back!' : 'Create Account',
+                                style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87),
+                              ),
+                              SizedBox(height: 8),
+                              Text(
+                                isLogin
+                                    ? 'Sign in to continue to EasyMarket'
+                                    : 'Fill in your details to get started',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              SizedBox(height: 24),
+
+                              // Form Fields
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration:
+                                    _buildInputDecoration('Email', Icons.email),
+                                validator: (value) {
+                                  if (value!.isEmpty || !value.contains('@')) {
+                                    return 'Please enter a valid email address';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              SizedBox(height: 16),
+                              TextFormField(
+                                controller: _passwordController,
+                                obscureText: obscurePassword,
+                                decoration: _buildInputDecoration(
+                                        'Password', Icons.lock)
+                                    .copyWith(
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      obscurePassword
+                                          ? Icons.visibility_off
+                                          : Icons.visibility,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                    onPressed: () {
+                                      setState(() {
+                                        obscurePassword = !obscurePassword;
+                                      });
+                                    },
+                                  ),
+                                ),
+                                validator: (value) {
+                                  if (value!.isEmpty || value.length < 6) {
+                                    return 'Password must be at least 6 characters long';
+                                  }
+                                  return null;
+                                },
+                              ),
+
+                              // Registration Fields
+                              if (!isLogin) ...[
+                                SizedBox(height: 16),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _firstNameController,
+                                        decoration: _buildInputDecoration(
+                                            'First Name', Icons.person),
+                                        validator: (value) {
+                                          if (value!.isEmpty) {
+                                            return 'Required';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                    SizedBox(width: 16),
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _lastNameController,
+                                        decoration: _buildInputDecoration(
+                                            'Last Name', null),
+                                        validator: (value) {
+                                          if (value!.isEmpty) {
+                                            return 'Required';
+                                          }
+                                          return null;
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 16),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedRole,
+                                  decoration: _buildInputDecoration(
+                                      'Role', Icons.assignment_ind),
+                                  items: [
+                                    DropdownMenuItem(
+                                      value: 'TENANT',
+                                      child: Text('Tenant'),
+                                    ),
+                                    DropdownMenuItem(
+                                      value: 'LANDLORD',
+                                      child: Text('Landlord'),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedRole = value;
+                                    });
+                                  },
+                                  validator: (value) {
+                                    if (value == null) {
+                                      return 'Please select a role';
+                                    }
+                                    return null;
+                                  },
+                                  icon: Icon(Icons.arrow_drop_down,
+                                      color: Colors.green),
+                                  dropdownColor: Colors.white,
+                                ),
+                                SizedBox(height: 16),
+                                TextFormField(
+                                  decoration: _buildInputDecoration(
+                                      'Birth Date', Icons.calendar_today),
+                                  readOnly: true,
+                                  controller: TextEditingController(
+                                    text: _birthDate != null
+                                        ? DateFormat('MMMM d, yyyy')
+                                            .format(_birthDate!)
+                                        : '',
+                                  ),
+                                  onTap: () => _selectBirthDate(context),
+                                  validator: (value) {
+                                    if (_birthDate == null) {
+                                      return 'Please select your birth date';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+
+                              // Forgot Password (only for login)
+                              if (isLogin) ...[
+                                SizedBox(height: 12),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () {},
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size(50, 30),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: Text(
+                                      'Forgot Password?',
+                                      style: TextStyle(
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+
+                              SizedBox(height: 24),
+
+                              // Submit Button
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _submit,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade600,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.symmetric(vertical: 16),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    elevation: 2,
+                                  ),
+                                  child: Text(
+                                    isLogin ? 'Sign In' : 'Create Account',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                              ),
+
+                              // Or divider
+                              SizedBox(height: 24),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Divider(
+                                        color: Colors.grey.shade300,
+                                        thickness: 1),
+                                  ),
+                                  Padding(
+                                    padding:
+                                        EdgeInsets.symmetric(horizontal: 16),
+                                    child: Text(
+                                      'Or continue with',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade600,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Divider(
+                                        color: Colors.grey.shade300,
+                                        thickness: 1),
+                                  ),
+                                ],
+                              ),
+
+                              // Social Login Buttons
+                              SizedBox(height: 24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  _socialLoginButton(
+                                    icon: Icons.g_mobiledata,
+                                    backgroundColor: Colors.white,
+                                    onPressed: () {},
+                                  ),
+                                  SizedBox(width: 16),
+                                  _socialLoginButton(
+                                    icon: Icons.apple,
+                                    backgroundColor: Colors.white,
+                                    onPressed: () {},
+                                  ),
+                                ],
+                              ),
+
+                              // Sign up/Sign in link
+                              SizedBox(height: 24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    isLogin
+                                        ? "Don't have an account? "
+                                        : "Already have an account? ",
+                                    style:
+                                        TextStyle(color: Colors.grey.shade600),
+                                  ),
+                                  GestureDetector(
+                                    onTap: _toggleAuthMode,
+                                    child: Text(
+                                      isLogin ? 'Sign Up' : 'Sign In',
+                                      style: TextStyle(
+                                        color: Colors.green.shade700,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           ),
@@ -313,11 +560,26 @@ class _AuthScreenState extends State<AuthScreen> {
       ),
     );
   }
-}
 
-void main() {
-  runApp(MaterialApp(
-    debugShowCheckedModeBanner: false,
-    home: AuthScreen(),
-  ));
+  Widget _socialLoginButton({
+    required IconData icon,
+    required Color backgroundColor,
+    required VoidCallback onPressed,
+  }) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        height: 56,
+        width: 56,
+        child: Icon(icon, size: 30, color: Colors.black87),
+      ),
+    );
+  }
 }
