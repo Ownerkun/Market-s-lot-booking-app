@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:market_lot_app/market_provider.dart';
 import 'package:market_lot_app/screen/market_screen/market_create_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/auth_provider.dart';
@@ -70,8 +71,11 @@ class _MarketListScreenState extends State<MarketListScreen> {
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
-                                  builder: (context) => MarketLayoutScreen(
-                                    marketId: market['id'],
+                                  builder: (context) => ChangeNotifierProvider(
+                                    create: (_) => MarketProvider(
+                                        market['id']), // Pass marketId here
+                                    child: MarketLayoutScreen(
+                                        marketId: market['id']),
                                   ),
                                 ),
                               );

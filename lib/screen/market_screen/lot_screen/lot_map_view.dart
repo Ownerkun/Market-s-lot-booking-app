@@ -9,49 +9,52 @@ class MarketMapView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final marketProvider = Provider.of<MarketProvider>(context);
-    final lots = marketProvider.lots;
-    final authProvider = Provider.of<AuthProvider>(context);
-    final isLandlord = authProvider.userRole == 'LANDLORD';
+    return Consumer<MarketProvider>(
+      builder: (context, marketProvider, child) {
+        final lots = marketProvider.lots;
+        final authProvider = Provider.of<AuthProvider>(context);
+        final isLandlord = authProvider.userRole == 'LANDLORD';
 
-    return Stack(
-      children: [
-        // Market Layout Background with grid
-        CustomPaint(
-          painter: GridPainter(),
-          size: Size(MediaQuery.of(context).size.width,
-              MediaQuery.of(context).size.height),
-        ),
+        return Stack(
+          children: [
+            // Market Layout Background with grid
+            CustomPaint(
+              painter: GridPainter(),
+              size: Size(MediaQuery.of(context).size.width,
+                  MediaQuery.of(context).size.height),
+            ),
 
-        if (lots.isEmpty)
-          _buildEmptyView(context, isLandlord)
-        else
-          ..._buildLots(context, lots, isLandlord),
+            if (lots.isEmpty)
+              _buildEmptyView(context, isLandlord)
+            else
+              ..._buildLots(context, lots, isLandlord),
 
-        // Helper text for landlords
-        if (isLandlord && lots.isNotEmpty)
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Drag to reposition lots • Long press to edit',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
+            // Helper text for landlords
+            if (isLandlord && lots.isNotEmpty)
+              Positioned(
+                bottom: 16,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.7),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Drag to reposition lots • Long press to edit',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
 

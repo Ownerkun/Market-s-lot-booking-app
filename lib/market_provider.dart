@@ -8,9 +8,8 @@ class MarketProvider with ChangeNotifier {
   List<Map<String, dynamic>> _lots = [];
   bool _isLoading = true;
   Map<String, dynamic>? _marketInfo;
-  String _marketId;
-
   MarketProvider(this._marketId);
+  String _marketId;
 
   // Getters
   List<Map<String, dynamic>> get lots => _lots;
@@ -63,6 +62,7 @@ class MarketProvider with ChangeNotifier {
     notifyListeners();
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    print('Fetching lots for market $_marketId');
     final token = await authProvider.getToken();
 
     if (token == null) {
@@ -81,6 +81,8 @@ class MarketProvider with ChangeNotifier {
 
     try {
       final response = await http.get(url, headers: headers);
+      print('Lots response status: ${response.statusCode}');
+      print('Lots response body: ${response.body}');
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -107,6 +109,7 @@ class MarketProvider with ChangeNotifier {
         throw Exception('Failed to fetch lots');
       }
     } catch (e) {
+      print('Error fetching lots: $e');
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to fetch lots: $e')),
       );
