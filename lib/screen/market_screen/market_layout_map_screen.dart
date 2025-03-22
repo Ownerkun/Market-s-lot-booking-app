@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/auth_provider.dart';
-import 'package:market_lot_app/screen/market_screen/lot_screen/lot_details_screen.dart';
+import 'package:market_lot_app/market_provider.dart';
+import 'package:market_lot_app/screen/market_screen/lot_screen/lot_list_view.dart';
+import 'package:market_lot_app/screen/market_screen/lot_screen/lot_map_view.dart';
 import 'package:provider/provider.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 
 class MarketLayoutScreen extends StatefulWidget {
   final String marketId;
@@ -16,12 +16,9 @@ class MarketLayoutScreen extends StatefulWidget {
 
 class _MarketLayoutScreenState extends State<MarketLayoutScreen>
     with SingleTickerProviderStateMixin {
-  List<Map<String, dynamic>> lots = [];
   bool _isListView = false;
-  bool _isLoading = true;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
-  Map<String, dynamic>? _marketInfo;
 
   @override
   void initState() {
@@ -32,8 +29,10 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
     );
     _fadeAnimation =
         Tween<double>(begin: 0.0, end: 1.0).animate(_animationController);
-    _fetchMarketInfo();
-    _fetchLots();
+
+    // Initialize the MarketProvider
+    final marketProvider = Provider.of<MarketProvider>(context, listen: false);
+    marketProvider.init(context);
   }
 
   @override
@@ -477,14 +476,15 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
 
   @override
   Widget build(BuildContext context) {
+    final marketProvider = Provider.of<MarketProvider>(context);
     final authProvider = Provider.of<AuthProvider>(context);
     final isLandlord = authProvider.userRole == 'LANDLORD';
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _marketInfo != null
-              ? '${_marketInfo!['name']} Layout'
+          marketProvider.marketInfo != null
+              ? '${marketProvider.marketInfo!['name']} Layout'
               : 'Market Layout',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
@@ -505,7 +505,7 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
           ),
         ],
       ),
-      body: _isLoading
+      body: marketProvider.isLoading
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -526,480 +526,16 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
             )
           : FadeTransition(
               opacity: _fadeAnimation,
-              child: _isListView
-                  ? _buildListView(isLandlord)
-                  : _buildLayoutView(isLandlord),
+              child: _isListView ? MarketListView() : MarketMapView(),
             ),
       floatingActionButton: isLandlord
           ? FloatingActionButton.extended(
-              onPressed: _addLot,
+              onPressed: () => marketProvider.addLot(context),
               label: Text(_isListView ? 'Add Lot' : 'Add Space'),
               icon: Icon(Icons.add),
               backgroundColor: Colors.green,
             )
           : null,
-    );
-  }
-
-  Widget _buildListView(bool isLandlord) {
-    if (lots.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.space_dashboard_outlined,
-              size: 80,
-              color: Colors.grey[400],
-            ),
-            SizedBox(height: 16),
-            Text(
-              'No lots available in this market',
-              style: TextStyle(
-                fontSize: 18,
-                color: Colors.grey[600],
-              ),
-            ),
-            SizedBox(height: 8),
-            if (isLandlord)
-              ElevatedButton.icon(
-                onPressed: _addLot,
-                icon: Icon(Icons.add),
-                label: Text('Add First Lot'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: EdgeInsets.all(16),
-      itemCount: lots.length,
-      itemBuilder: (context, index) {
-        final lot = lots[index];
-        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-        final isAvailable = lot['available'] ?? false;
-
-        return Card(
-          margin: EdgeInsets.only(bottom: 16),
-          elevation: 2,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Column(
-              children: [
-                Container(
-                  color: _getLotColor(isAvailable),
-                  height: 8,
-                ),
-                ListTile(
-                  contentPadding: EdgeInsets.all(16),
-                  title: Row(
-                    children: [
-                      Text(
-                        lot['name'],
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Container(
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color:
-                              isAvailable ? Colors.green[50] : Colors.red[50],
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isAvailable ? Colors.green : Colors.red,
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          isAvailable ? 'Available' : 'Unavailable',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isAvailable
-                                ? Colors.green[800]
-                                : Colors.red[800],
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(height: 8),
-                      Text(
-                        lot['details'],
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[700],
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Icon(Icons.monetization_on,
-                              size: 16, color: Colors.amber[700]),
-                          SizedBox(width: 4),
-                          Text(
-                            '\$${lot['price'].toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.amber[700],
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              icon: Icon(Icons.visibility),
-                              label: Text('View Details'),
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => LotDetailsScreen(
-                                      lot: lot,
-                                      isLandlord: isLandlord,
-                                      marketId: widget.marketId,
-                                      onSave: (name, detail, price) async {
-                                        try {
-                                          await authProvider.updateLot(
-                                            marketId: widget.marketId,
-                                            lotId: lot['id'],
-                                            name: name,
-                                            details: detail,
-                                            price: price,
-                                            available: lot['available'],
-                                            size: lot['size'],
-                                            position: lot['position'],
-                                          );
-                                          _fetchLots();
-                                        } catch (e) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    'Failed to update lot: $e')),
-                                          );
-                                        }
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.blue[700],
-                                side: BorderSide(color: Colors.blue[300]!),
-                              ),
-                            ),
-                          ),
-                          if (isLandlord) ...[
-                            SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                icon: Icon(Icons.edit),
-                                label: Text('Edit'),
-                                onPressed: () {
-                                  _showEditLotBottomSheet(context, index);
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.blue[700],
-                                  foregroundColor: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildLayoutView(bool isLandlord) {
-    // Create a background grid for better visualization
-    return Stack(
-      children: [
-        // Market Layout Background with grid
-        CustomPaint(
-          painter: GridPainter(),
-          size: Size(MediaQuery.of(context).size.width,
-              MediaQuery.of(context).size.height),
-        ),
-
-        if (lots.isEmpty)
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.map_outlined,
-                  size: 80,
-                  color: Colors.grey[400],
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'No lots available in this market',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                SizedBox(height: 8),
-                if (isLandlord)
-                  ElevatedButton.icon(
-                    onPressed: _addLot,
-                    icon: Icon(Icons.add),
-                    label: Text('Add First Lot'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-        // Draggable Lots
-        for (var i = 0; i < lots.length; i++)
-          Positioned(
-            left: lots[i]['position'].dx,
-            top: lots[i]['position'].dy,
-            child: GestureDetector(
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => LotDetailsScreen(
-                      lot: lots[i],
-                      isLandlord: isLandlord,
-                      marketId: widget.marketId,
-                      onSave: (name, details, price) async {
-                        try {
-                          final authProvider =
-                              Provider.of<AuthProvider>(context, listen: false);
-                          await authProvider.updateLot(
-                            marketId: widget.marketId,
-                            lotId: lots[i]['id'],
-                            name: name,
-                            details: details,
-                            price: price,
-                            available: lots[i]['available'],
-                            size: lots[i]['size'],
-                            position: lots[i]['position'],
-                          );
-                          _fetchLots();
-                        } catch (e) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Failed to update lot: $e')),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                );
-              },
-              onLongPress: isLandlord
-                  ? () {
-                      _showEditLotBottomSheet(context, i);
-                    }
-                  : null,
-              onPanUpdate: isLandlord
-                  ? (details) {
-                      setState(() {
-                        lots[i]['position'] += details.delta;
-                      });
-                    }
-                  : null,
-              onPanEnd: isLandlord
-                  ? (details) {
-                      _saveLots(lots[i]);
-                    }
-                  : null,
-              child: LotWidget(
-                lot: lots[i],
-                isLandlord: isLandlord,
-              ),
-            ),
-          ),
-
-        // Helper text for landlords
-        if (isLandlord && lots.isNotEmpty)
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.7),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'Drag to reposition lots • Long press to edit',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-// Grid painter for the background
-class GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.grey[200]!
-      ..style = PaintingStyle.fill;
-
-    canvas.drawRect(
-      Rect.fromLTWH(0, 0, size.width, size.height),
-      paint,
-    );
-
-    final gridPaint = Paint()
-      ..color = Colors.grey[300]!
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1;
-
-    // Draw grid lines
-    double spacing = 20;
-
-    // Vertical lines
-    for (double i = 0; i < size.width; i += spacing) {
-      canvas.drawLine(
-        Offset(i, 0),
-        Offset(i, size.height),
-        gridPaint,
-      );
-    }
-
-    // Horizontal lines
-    for (double i = 0; i < size.height; i += spacing) {
-      canvas.drawLine(
-        Offset(0, i),
-        Offset(size.width, i),
-        gridPaint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
-
-// Lot widget with improved design
-class LotWidget extends StatelessWidget {
-  final Map<String, dynamic> lot;
-  final bool isLandlord;
-
-  const LotWidget({
-    Key? key,
-    required this.lot,
-    required this.isLandlord,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isAvailable = lot['available'] ?? false;
-    final Color lotColor = isAvailable
-        ? Color(0xFF4CAF50).withOpacity(0.7) // Green for available
-        : Color(0xFFE57373).withOpacity(0.7); // Red for unavailable
-
-    return Material(
-      color: Colors.transparent,
-      child: Container(
-        width: lot['size'].width,
-        height: lot['size'].height,
-        decoration: BoxDecoration(
-          color: lotColor,
-          borderRadius: BorderRadius.circular(8),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black26,
-              blurRadius: 5,
-              offset: Offset(0, 2),
-            ),
-          ],
-          border: Border.all(
-            color: isAvailable ? Colors.green[800]! : Colors.red[800]!,
-            width: 2,
-          ),
-        ),
-        child: Stack(
-          children: [
-            if (isLandlord)
-              Positioned(
-                right: 4,
-                top: 4,
-                child: Icon(
-                  Icons.drag_indicator,
-                  size: 16,
-                  color: Colors.white.withOpacity(0.7),
-                ),
-              ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        lot['name'],
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      '\$${lot['price'].toStringAsFixed(0)}',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

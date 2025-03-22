@@ -1,0 +1,42 @@
+// Save this as checkVersions.gradle in your android directory
+task checkGradleVersions {
+    doLast {
+        println "==== Checking Gradle Plugin Versions ===="
+        println "Root project: ${project.name}"
+        
+        // Check buildscript classpath
+        println "\nBuildscript dependencies:"
+        buildscript.configurations.classpath.resolvedConfiguration.firstLevelModuleDependencies.each {
+            if (it.moduleGroup == "com.android.tools.build" && it.moduleName == "gradle") {
+                println "  * com.android.tools.build:gradle:${it.moduleVersion}"
+            }
+            if (it.moduleGroup == "org.jetbrains.kotlin") {
+                println "  * ${it.moduleGroup}:${it.moduleName}:${it.moduleVersion}"
+            }
+        }
+        
+        // Check all projects
+        allprojects { p ->
+            println "\nProject: ${p.name}"
+            
+            // Check buildscript classpath
+            p.buildscript.configurations.findByName('classpath')?.resolvedConfiguration?.firstLevelModuleDependencies?.each {
+                if (it.moduleGroup == "com.android.tools.build" && it.moduleName == "gradle") {
+                    println "  * com.android.tools.build:gradle:${it.moduleVersion}"
+                }
+                if (it.moduleGroup == "org.jetbrains.kotlin") {
+                    println "  * ${it.moduleGroup}:${it.moduleName}:${it.moduleVersion}"
+                }
+            }
+            
+            // Check applied plugins
+            p.plugins.each { plugin ->
+                println "  - Applied plugin: ${plugin.class.name}"
+            }
+        }
+        
+        // Additional check for settings.gradle plugins
+        println "\nChecking settings.gradle plugins (manual check required)"
+        println "Please check your settings.gradle file for any explicit version declarations"
+    }
+}
