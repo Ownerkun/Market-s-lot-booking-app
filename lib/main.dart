@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:market_lot_app/screen/market_screen/market_list_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:provider/provider.dart';
-import 'package:market_lot_app/auth_provider.dart';
+import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/auth_screen/auth_screen.dart';
 
 void main() async {
@@ -17,10 +18,8 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) =>
-              AuthProvider(prefs, encrypter), // Pass prefs and encrypter
-        ),
+        ChangeNotifierProvider(create: (_) => AuthProvider(prefs, encrypter)),
+        ChangeNotifierProvider(create: (_) => BookingProvider())
       ],
       child: MyApp(),
     ),

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:provider/provider.dart';
-import 'package:market_lot_app/auth_provider.dart';
+import 'package:market_lot_app/provider/auth_provider.dart';
 
 class MarketProvider with ChangeNotifier {
   List<Map<String, dynamic>> _lots = [];

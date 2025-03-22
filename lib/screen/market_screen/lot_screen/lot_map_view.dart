@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:market_lot_app/market_provider.dart';
+import 'package:market_lot_app/provider/market_provider.dart';
 import 'package:provider/provider.dart';
-import 'package:market_lot_app/auth_provider.dart';
+import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_details_screen.dart';
 
 class MarketMapView extends StatelessWidget {
@@ -113,7 +113,7 @@ class MarketMapView extends StatelessWidget {
                   lot: lots[i],
                   isLandlord: isLandlord,
                   marketId: marketProvider.marketId,
-                  onSave: (name, details, price) async {
+                  onSave: (name, details, price, available) async {
                     try {
                       final authProvider =
                           Provider.of<AuthProvider>(context, listen: false);
@@ -123,7 +123,7 @@ class MarketMapView extends StatelessWidget {
                         name: name,
                         details: details,
                         price: price,
-                        available: lots[i]['available'],
+                        available: available,
                         size: lots[i]['size'],
                         position: lots[i]['position'],
                       );
