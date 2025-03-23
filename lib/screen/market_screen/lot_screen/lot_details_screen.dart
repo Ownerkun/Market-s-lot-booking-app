@@ -1,22 +1,21 @@
 import 'package:flutter/material.dart';
-import 'package:market_lot_app/provider/booking_provider.dart';
-import 'package:provider/provider.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:market_lot_app/provider/booking_provider.dart';
 
 class LotDetailsScreen extends StatefulWidget {
   final Map<String, dynamic> lot;
   final String marketId;
+  final Function(String, String, double, bool) onSave;
   final bool isLandlord;
-  final Function(String name, String details, double price, bool available)
-      onSave;
 
   const LotDetailsScreen({
     Key? key,
     required this.lot,
     required this.marketId,
-    required this.isLandlord,
     required this.onSave,
+    required this.isLandlord,
   }) : super(key: key);
 
   @override
@@ -24,143 +23,50 @@ class LotDetailsScreen extends StatefulWidget {
 }
 
 class _LotDetailsScreenState extends State<LotDetailsScreen> {
-  DateTime _selectedDay = DateTime.now();
-  DateTime _focusedDay = DateTime.now();
-  List<DateTime> _bookedDates = [];
-  bool _isLoading = true;
-  bool _isAvailable = false;
-  String? _availabilityError;
+  late DateTime _selectedDay;
+  late DateTime _focusedDay;
+  late BookingProvider _bookingProvider;
+  bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    _selectedDay = DateTime.now();
+    _focusedDay = DateTime.now();
+
+    // Initialize _bookingProvider directly in initState
+    _bookingProvider = Provider.of<BookingProvider>(context, listen: false);
+
+    // Use addPostFrameCallback to delay the call to loadBookedDates
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadBookedDates();
+      _loadBookedDates(_focusedDay);
     });
   }
 
-  Future<void> _loadBookedDates() async {
-    final bookingProvider =
-        Provider.of<BookingProvider>(context, listen: false);
+  Future<void> _loadBookedDates(DateTime month) async {
+    setState(() {
+      _isLoading = true;
+    });
 
-    try {
-      setState(() {
-        _isLoading = true;
-      });
+    await _bookingProvider.loadBookedDatesForLot(widget.lot['id'], month);
 
-      _bookedDates =
-          await bookingProvider.fetchLotBookedDates(widget.lot['id'] ?? '');
-      await _checkAvailability(_selectedDay);
-    } catch (e) {
-      setState(() {
-        _availabilityError = 'Could not load availability data';
-      });
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
-    }
+    setState(() {
+      _isLoading = false;
+    });
   }
 
-  Future<void> _checkAvailability(DateTime date) async {
-    if (!widget.lot['available']) {
-      setState(() {
-        _isAvailable = false;
-      });
-      return;
-    }
-
-    final bookingProvider =
-        Provider.of<BookingProvider>(context, listen: false);
-
-    try {
-      final isAvailable = await bookingProvider.checkLotAvailability(
-        widget.lot['id'] ?? '',
-        date,
-      );
-
-      setState(() {
-        _isAvailable = isAvailable;
-        _availabilityError = null;
-      });
-    } catch (e) {
-      setState(() {
-        _availabilityError = 'Could not check availability';
-        _isAvailable = false;
-      });
-    }
+  bool _isDateAvailable(DateTime day) {
+    return _bookingProvider.isDateAvailable(widget.lot['id'], day);
   }
 
-  void _showEditLotDialog() async {
-    TextEditingController nameController =
-        TextEditingController(text: widget.lot['name']);
-    TextEditingController detailsController =
-        TextEditingController(text: widget.lot['details']);
-    TextEditingController priceController =
-        TextEditingController(text: widget.lot['price'].toString());
-    bool isAvailable = widget.lot['available'] ?? false;
-
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: Text('Edit Lot'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: nameController,
-                    decoration: InputDecoration(labelText: 'Name'),
-                  ),
-                  TextField(
-                    controller: detailsController,
-                    decoration: InputDecoration(labelText: 'Details'),
-                  ),
-                  TextField(
-                    controller: priceController,
-                    decoration: InputDecoration(labelText: 'Price'),
-                    keyboardType: TextInputType.number,
-                  ),
-                  SwitchListTile(
-                    title: Text('Available'),
-                    value: isAvailable,
-                    onChanged: (value) {
-                      setState(() {
-                        isAvailable = value;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  widget.onSave(
-                    nameController.text,
-                    detailsController.text,
-                    double.tryParse(priceController.text) ?? 0.0,
-                    isAvailable,
-                  );
-                  Navigator.pop(context);
-                },
-                child: Text('Save'),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
-  bool _isDateBooked(DateTime day) {
-    return _bookedDates.any((bookedDate) => isSameDay(bookedDate, day));
+  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
+    if (!isSameDay(_selectedDay, selectedDay) &&
+        _isDateAvailable(selectedDay)) {
+      setState(() {
+        _selectedDay = selectedDay;
+        _focusedDay = focusedDay;
+      });
+    }
   }
 
   Future<void> _bookLot() async {
@@ -168,55 +74,40 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
       _isLoading = true;
     });
 
-    try {
-      final bookingProvider =
-          Provider.of<BookingProvider>(context, listen: false);
+    final success =
+        await _bookingProvider.requestBooking(widget.lot['id'], _selectedDay);
 
-      final success = await bookingProvider.requestBooking(
-        widget.lot['id'],
-        _selectedDay,
-      );
+    setState(() {
+      _isLoading = false;
+    });
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Booking request submitted successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        // Refresh booked dates after successful booking
-        await _loadBookedDates();
-      } else {
-        throw Exception(
-            bookingProvider.errorMessage ?? 'Failed to request booking');
-      }
-    } catch (e) {
+    if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to request booking: $e'),
+          content: Text(
+              'Booking successful for ${DateFormat('MMMM d, yyyy').format(_selectedDay)}'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_bookingProvider.errorMessage ?? 'Failed to book lot'),
           backgroundColor: Colors.red,
         ),
       );
-    } finally {
-      setState(() {
-        _isLoading = false;
-      });
     }
+  }
+
+  void _onPageChanged(DateTime focusedDay) {
+    // When calendar page changes, load booked dates for the new month
+    _focusedDay = focusedDay;
+    _loadBookedDates(focusedDay);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.lot['name'] ?? 'Lot Details'),
-        actions: [
-          if (widget.isLandlord)
-            IconButton(
-              icon: Icon(Icons.edit),
-              onPressed: _showEditLotDialog,
-            ),
-        ],
-      ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
           : CustomScrollView(
@@ -232,7 +123,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                       IconButton(
                         icon: Icon(Icons.edit, color: Colors.white),
                         onPressed: () {
-                          _showEditLotDialog();
+                          _showEditLotDialog(context, widget.lot);
                         },
                       ),
                   ],
@@ -368,8 +259,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                         _buildInfoCard(
                           child: Column(
                             children: [
-                              _buildFeatureRow(Icons.aspect_ratio, 'Size',
-                                  '${widget.lot['size'].width.toInt()} x ${widget.lot['size'].height.toInt()} ft'),
+                              _buildFeatureRow(
+                                  Icons.aspect_ratio, 'Size', '10 x 10 ft'),
                               Divider(),
                               _buildFeatureRow(Icons.location_on, 'Location',
                                   'Section A, West Wing'),
@@ -391,48 +282,58 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                         _buildInfoCard(
                           child: Column(
                             children: [
-                              TableCalendar(
-                                firstDay: DateTime.utc(2020, 1, 1),
-                                lastDay: DateTime.utc(2030, 12, 31),
-                                focusedDay: _focusedDay,
-                                selectedDayPredicate: (day) =>
-                                    isSameDay(_selectedDay, day),
-                                onDaySelected: (selectedDay, focusedDay) {
-                                  setState(() {
-                                    _selectedDay = selectedDay;
-                                    _focusedDay = focusedDay;
-                                  });
-                                  _checkAvailability(selectedDay);
+                              Consumer<BookingProvider>(
+                                builder: (context, bookingProvider, child) {
+                                  return TableCalendar(
+                                    firstDay: DateTime.now(),
+                                    lastDay:
+                                        DateTime.now().add(Duration(days: 365)),
+                                    focusedDay: _focusedDay,
+                                    selectedDayPredicate: (day) =>
+                                        isSameDay(_selectedDay, day),
+                                    onDaySelected: _onDaySelected,
+                                    onPageChanged: _onPageChanged,
+                                    calendarStyle: CalendarStyle(
+                                      todayDecoration: BoxDecoration(
+                                        color: Colors.blue.withOpacity(0.5),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      selectedDecoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      disabledTextStyle: TextStyle(
+                                        color: Colors.grey,
+                                        decoration: TextDecoration.lineThrough,
+                                      ),
+                                    ),
+                                    enabledDayPredicate: (day) {
+                                      // Disable dates that are already booked
+                                      return _isDateAvailable(day) &&
+                                          day.isAfter(DateTime.now()
+                                              .subtract(Duration(days: 1)));
+                                    },
+                                    calendarBuilders: CalendarBuilders(
+                                      markerBuilder: (context, date, events) {
+                                        if (!_isDateAvailable(date)) {
+                                          return Positioned(
+                                            right: 1,
+                                            bottom: 1,
+                                            child: Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        return null;
+                                      },
+                                    ),
+                                  );
                                 },
-                                calendarStyle: CalendarStyle(
-                                  todayDecoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.5),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  selectedDecoration: BoxDecoration(
-                                    color: Colors.green,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                                calendarBuilders: CalendarBuilders(
-                                  markerBuilder: (context, date, events) {
-                                    if (_isDateBooked(date)) {
-                                      return Positioned(
-                                        right: 1,
-                                        bottom: 1,
-                                        child: Container(
-                                          decoration: BoxDecoration(
-                                            color: Colors.red,
-                                            shape: BoxShape.circle,
-                                          ),
-                                          width: 8,
-                                          height: 8,
-                                        ),
-                                      );
-                                    }
-                                    return null;
-                                  },
-                                ),
                               ),
                               Padding(
                                 padding: EdgeInsets.symmetric(
@@ -445,53 +346,14 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                   ],
                                 ),
                               ),
-                              if (_availabilityError != null)
-                                Padding(
-                                  padding: EdgeInsets.all(8),
-                                  child: Text(
-                                    _availabilityError!,
-                                    style: TextStyle(
-                                      color: Colors.red,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
                               Padding(
                                 padding: EdgeInsets.all(8),
-                                child: Column(
-                                  children: [
-                                    Text(
-                                      'Selected date: ${DateFormat('MMMM d, yyyy').format(_selectedDay)}',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    SizedBox(height: 8),
-                                    _isDateBooked(_selectedDay)
-                                        ? Text(
-                                            'This date is already booked',
-                                            style: TextStyle(
-                                              color: Colors.red,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          )
-                                        : _isAvailable
-                                            ? Text(
-                                                'This date is available for booking',
-                                                style: TextStyle(
-                                                  color: Colors.green,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              )
-                                            : Text(
-                                                'This date is not available',
-                                                style: TextStyle(
-                                                  color: Colors.orange,
-                                                  fontWeight: FontWeight.bold,
-                                                ),
-                                              ),
-                                  ],
+                                child: Text(
+                                  'Selected date: ${DateFormat('MMMM d, yyyy').format(_selectedDay)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
                                 ),
                               ),
                             ],
@@ -518,10 +380,12 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
         ),
         child: SafeArea(
           child: ElevatedButton(
-            onPressed:
-                (_isAvailable && !_isDateBooked(_selectedDay) && !_isLoading)
-                    ? _bookLot
-                    : null,
+            onPressed: (widget.lot['available'] &&
+                    !widget.isLandlord &&
+                    !_isLoading &&
+                    _isDateAvailable(_selectedDay))
+                ? _bookLot
+                : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
               disabledBackgroundColor: Colors.grey[300],
@@ -541,6 +405,103 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _showEditLotDialog(
+      BuildContext context, Map<String, dynamic> lot) async {
+    TextEditingController nameController =
+        TextEditingController(text: lot['name']);
+    TextEditingController detailsController =
+        TextEditingController(text: lot['details']);
+    TextEditingController priceController =
+        TextEditingController(text: lot['price'].toString());
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.edit, color: Colors.green),
+              SizedBox(width: 8),
+              Text(
+                'Edit Lot',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Name',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: Icon(Icons.store, color: Colors.green),
+                  ),
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: detailsController,
+                  decoration: InputDecoration(
+                    labelText: 'Details',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: Icon(Icons.description, color: Colors.green),
+                  ),
+                  maxLines: 3,
+                ),
+                SizedBox(height: 16),
+                TextField(
+                  controller: priceController,
+                  decoration: InputDecoration(
+                    labelText: 'Price',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    prefixIcon: Icon(Icons.attach_money, color: Colors.green),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Save changes
+                widget.onSave(nameController.text, detailsController.text,
+                    double.parse(priceController.text), lot['available']);
+                Navigator.pop(context);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Save'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -588,8 +549,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                 Text(
                   label,
                   style: TextStyle(
-                    color: Colors.grey[600],
                     fontSize: 14,
+                    color: Colors.grey[600],
                   ),
                 ),
                 SizedBox(height: 4),
@@ -597,7 +558,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                   value,
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
@@ -623,8 +584,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
         Text(
           label,
           style: TextStyle(
-            color: Colors.grey[600],
             fontSize: 14,
+            color: Colors.grey[600],
           ),
         ),
       ],

@@ -19,7 +19,13 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(prefs, encrypter)),
-        ChangeNotifierProvider(create: (_) => BookingProvider())
+        ChangeNotifierProxyProvider<AuthProvider, BookingProvider>(
+          create: (context) => BookingProvider(
+            Provider.of<AuthProvider>(context, listen: false),
+          ),
+          update: (context, authProvider, bookingProvider) =>
+              BookingProvider(authProvider),
+        ),
       ],
       child: MyApp(),
     ),

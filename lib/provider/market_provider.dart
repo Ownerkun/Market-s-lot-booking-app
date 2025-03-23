@@ -62,7 +62,7 @@ class MarketProvider with ChangeNotifier {
     notifyListeners();
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    print('Fetching lots for market $_marketId');
+    // print('Fetching lots for market $_marketId'); //Debugging
     final token = await authProvider.getToken();
 
     if (token == null) {
@@ -81,8 +81,8 @@ class MarketProvider with ChangeNotifier {
 
     try {
       final response = await http.get(url, headers: headers);
-      print('Lots response status: ${response.statusCode}');
-      print('Lots response body: ${response.body}');
+      // print('Lots response status: ${response.statusCode}'); //Debugging
+      // print('Lots response body: ${response.body}'); //Debugging
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -109,7 +109,7 @@ class MarketProvider with ChangeNotifier {
         throw Exception('Failed to fetch lots');
       }
     } catch (e) {
-      print('Error fetching lots: $e');
+      // print('Error fetching lots: $e'); //Debugging
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to fetch lots: $e')),
       );

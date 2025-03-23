@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:market_lot_app/provider/auth_provider.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BookingProvider with ChangeNotifier {
+  final AuthProvider _authProvider;
+  BookingProvider(this._authProvider);
+
   final String _baseUrl = "http://localhost:3002/bookings";
   final String _lotBaseUrl = "http://localhost:3002/lots";
   bool _isLoading = false;
@@ -91,8 +95,8 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  // Check lot availability for a specific date
-  Future<bool> checkLotAvailability(String lotId, DateTime date) async {
+  Future<Map<String, dynamic>> fetchLotAvailabilityForMonth(
+      String lotId, int month, int year) async {
     _isLoading = true;
     notifyListeners();
 
@@ -103,12 +107,14 @@ class BookingProvider with ChangeNotifier {
       _errorMessage = 'No token found. Please log in.';
       _isLoading = false;
       notifyListeners();
-      return false;
+      return {
+        'available': true,
+        'bookedDates': []
+      }; // Default to available if no token
     }
 
-    final formattedDate = date.toIso8601String().split('T')[0];
-    final url =
-        Uri.parse('$_lotBaseUrl/$lotId/availability?date=$formattedDate');
+    final url = Uri.parse(
+        '$_baseUrl/lots/$lotId/availability-month?month=$month&year=$year');
     final headers = {
       'Authorization': 'Bearer $token',
     };
@@ -118,90 +124,52 @@ class BookingProvider with ChangeNotifier {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        _errorMessage = null;
-        _isLoading = false;
-        notifyListeners();
-        return data['available'];
-      } else {
-        _errorMessage = 'Failed to check availability: ${response.body}';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-    } catch (e) {
-      _errorMessage = 'Failed to check availability: $e';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
 
-  // Fetch booked dates for a lot
-  Future<List<DateTime>> fetchLotBookedDates(String lotId) async {
-    if (_lotBookedDates.containsKey(lotId)) {
-      return _lotBookedDates[lotId]!;
-    }
+        print("API Response for lot $lotId: ${response.body}");
 
-    _isLoading = true;
-    notifyListeners();
+        // Convert string dates to DateTime objects
+        List<DateTime> bookedDates = [];
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+        if (data['bookedDates'] != null) {
+          bookedDates = (data['bookedDates'] as List)
+              .map((dateStr) => DateTime.parse(dateStr))
+              .toList();
+        }
 
-    if (token == null) {
-      _errorMessage = 'No token found. Please log in.';
-      _isLoading = false;
-      notifyListeners();
-      return [];
-    }
-
-    // Assuming the API has an endpoint to get all bookings for a specific lot
-    // This endpoint might need to be created on the backend
-    final url = Uri.parse('$_baseUrl?lotId=$lotId');
-    final headers = {
-      'Authorization': 'Bearer $token',
-    };
-
-    try {
-      final response = await http.get(url, headers: headers);
-
-      if (response.statusCode == 200) {
-        final List<dynamic> bookingsData = json.decode(response.body);
-
-        // Extract dates from bookings with status approved or pending
-        List<DateTime> bookedDates = bookingsData
-            .where((booking) =>
-                booking['status'] == 'APPROVED' ||
-                booking['status'] == 'PENDING')
-            .map<DateTime>((booking) => DateTime.parse(booking['date']))
-            .toList();
-
+        // Cache the booked dates
         _lotBookedDates[lotId] = bookedDates;
+
         _errorMessage = null;
         _isLoading = false;
         notifyListeners();
-        return bookedDates;
+
+        // If the API doesn't return an 'available' flag, we'll default to true
+        // The app will use the booked dates to determine if a specific day is available
+        if (!data.containsKey('available')) {
+          data['available'] = true;
+        }
+
+        return data;
       } else {
-        _errorMessage = 'Failed to fetch booked dates: ${response.body}';
+        // Handle error but default to "no bookings" rather than "not available"
+        _errorMessage = 'Failed to fetch availability: ${response.body}';
         _isLoading = false;
         notifyListeners();
-        return [];
+        return {'available': true, 'bookedDates': []};
       }
     } catch (e) {
-      _errorMessage = 'Failed to fetch booked dates: $e';
+      _errorMessage = 'Failed to fetch availability: $e';
       _isLoading = false;
       notifyListeners();
-      return [];
+      return {'available': true, 'bookedDates': []};
     }
   }
 
-  // Request a booking (for tenants)
   Future<bool> requestBooking(String lotId, DateTime date) async {
     _isLoading = true;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await _authProvider.getToken();
 
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
@@ -210,53 +178,70 @@ class BookingProvider with ChangeNotifier {
       return false;
     }
 
-    final url = Uri.parse(_baseUrl);
+    final url = Uri.parse('$_baseUrl');
     final headers = {
       'Authorization': 'Bearer $token',
       'Content-Type': 'application/json',
     };
 
-    final body = json.encode({
-      'lotId': lotId,
-      'date': date.toIso8601String().split('T')[0],
-    });
-
     try {
-      final response = await http.post(url, headers: headers, body: body);
+      // Create a UTC DateTime with complete ISO format
+      final formattedDate = DateTime.utc(
+        date.year,
+        date.month,
+        date.day,
+        12, // noon UTC
+        0,
+        0,
+      ).toIso8601String(); // Add UTC timezone indicator
+
+      print('Formatted date: $formattedDate'); // Debug log
+
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'lotId': lotId,
+          'date': formattedDate,
+        }),
+      );
 
       if (response.statusCode == 201) {
-        _errorMessage = null;
-
-        // If we have cached dates for this lot, update them
         if (_lotBookedDates.containsKey(lotId)) {
           _lotBookedDates[lotId]!.add(date);
+        } else {
+          _lotBookedDates[lotId] = [date];
         }
-
+        _errorMessage = null;
         _isLoading = false;
         notifyListeners();
         return true;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout();
+        return false;
       } else {
-        _errorMessage = 'Failed to request booking: ${response.body}';
-        _isLoading = false;
-        notifyListeners();
+        _errorMessage = 'Failed to create booking: ${response.body}';
         return false;
       }
     } catch (e) {
-      _errorMessage = 'Failed to request booking: $e';
+      _errorMessage = 'Failed to create booking: $e';
+      return false;
+    } finally {
       _isLoading = false;
       notifyListeners();
-      return false;
     }
   }
 
-  // Update booking status (for landlords)
-  Future<void> updateBookingStatus(String bookingId, String status) async {
+  List<DateTime> getBookedDatesForLot(String lotId) {
+    return _lotBookedDates[lotId] ?? [];
+  }
+
+  Future<void> loadBookedDatesForLot(String lotId, DateTime month) async {
     _isLoading = true;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
+    final token = await _authProvider.getToken();
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
       _isLoading = false;
@@ -264,111 +249,27 @@ class BookingProvider with ChangeNotifier {
       return;
     }
 
-    final url = Uri.parse('$_baseUrl/$bookingId/status');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-
-    final body = json.encode({
-      'status': status,
-    });
-
     try {
-      final response = await http.put(url, headers: headers, body: body);
+      final availability =
+          await fetchLotAvailabilityForMonth(lotId, month.month, month.year);
 
-      if (response.statusCode == 200) {
-        _errorMessage = null;
-        await fetchLandlordBookings(); // Refresh the list
-
-        // Clear cached dates as they may have changed
-        _lotBookedDates.clear();
-      } else {
-        _errorMessage = 'Failed to update booking status: ${response.body}';
+      if (availability['bookedDates'] != null) {
+        _lotBookedDates[lotId] = (availability['bookedDates'] as List)
+            .map((dateStr) => DateTime.parse(dateStr))
+            .toList();
       }
-    } catch (e) {
-      _errorMessage = 'Failed to update booking status: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
   }
 
-  // Cancel booking (for tenants)
-  Future<bool> cancelBooking(String bookingId) async {
-    _isLoading = true;
-    notifyListeners();
-
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    if (token == null) {
-      _errorMessage = 'No token found. Please log in.';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-
-    final url = Uri.parse('$_baseUrl/$bookingId/cancel');
-    final headers = {
-      'Authorization': 'Bearer $token',
-    };
-
-    try {
-      final response = await http.put(url, headers: headers);
-
-      if (response.statusCode == 200) {
-        _errorMessage = null;
-
-        // Clear cached dates as they may have changed
-        _lotBookedDates.clear();
-
-        _isLoading = false;
-        notifyListeners();
-        return true;
-      } else {
-        _errorMessage = 'Failed to cancel booking: ${response.body}';
-        _isLoading = false;
-        notifyListeners();
-        return false;
-      }
-    } catch (e) {
-      _errorMessage = 'Failed to cancel booking: $e';
-      _isLoading = false;
-      notifyListeners();
-      return false;
-    }
-  }
-
-  Future<void> createBooking({
-    required String lotId,
-    required DateTime date,
-  }) async {
-    try {
-      // Assuming you have your API base URL defined
-      final url = Uri.parse('$_baseUrl/bookings');
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          // Add any authentication headers if needed
-          // 'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({
-          'lotId': lotId,
-          'date': date.toIso8601String(),
-        }),
-      );
-
-      if (response.statusCode != 201) {
-        throw Exception('Failed to create booking: ${response.body}');
-      }
-
-      // Optionally update local state
-      notifyListeners();
-    } catch (e) {
-      throw Exception('Failed to create booking: $e');
-    }
+  // Add method to check if a specific date is available
+  bool isDateAvailable(String lotId, DateTime date) {
+    final bookedDates = _lotBookedDates[lotId] ?? [];
+    return !bookedDates.any((bookedDate) =>
+        bookedDate.year == date.year &&
+        bookedDate.month == date.month &&
+        bookedDate.day == date.day);
   }
 }

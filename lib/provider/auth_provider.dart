@@ -47,7 +47,6 @@ class AuthProvider with ChangeNotifier {
       final decrypted = _encrypter.decrypt64(encryptedData, iv: iv);
       return decrypted;
     } catch (e) {
-      print('Decryption error: $e');
       rethrow;
     }
   }
@@ -78,8 +77,8 @@ class AuthProvider with ChangeNotifier {
         }),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      // print('Response status: ${response.statusCode}'); // Debugging
+      // print('Response body: ${response.body}'); // Debugging
 
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
@@ -97,7 +96,6 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'An error occurred. Please try again.';
-      print('Error during registration: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -119,8 +117,8 @@ class AuthProvider with ChangeNotifier {
         }),
       );
 
-      print('Response status: ${response.statusCode}');
-      print('Response body: ${response.body}');
+      // print('Response status: ${response.statusCode}'); // Debugging
+      print('Response body: ${response.body}'); // Debugging
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
@@ -142,9 +140,9 @@ class AuthProvider with ChangeNotifier {
           _userRole = payload['role']; // Extract role from the token payload
           _userId = payload['userId']; // Extract user ID from the token payload
 
-          print('Decoded token payload: $payload'); // Debugging
-          print('User Role: $_userRole'); // Debugging
-          print('User ID: $_userId'); // Debugging
+          // print('Decoded token payload: $payload'); // Debugging
+          // print('User Role: $_userRole'); // Debugging
+          // print('User ID: $_userId'); // Debugging
 
           _errorMessage = null;
 
@@ -160,7 +158,6 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'An error occurred. Please try again.';
-      print('Error during login: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -208,7 +205,7 @@ class AuthProvider with ChangeNotifier {
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      print('Markets response: ${response.body}');
+      // print('Markets response: ${response.body}'); // Debugging
 
       if (response.statusCode == 200) {
         _markets = json.decode(response.body);
@@ -218,7 +215,6 @@ class AuthProvider with ChangeNotifier {
       }
     } catch (e) {
       _errorMessage = 'An error occurred. Please try again.';
-      print('Error fetching markets: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -239,7 +235,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> fetchProfile() async {
     if (_userId == null) {
-      print('User ID is null. Cannot fetch profile.');
+      // print('User ID is null. Cannot fetch profile.'); //
       return;
     }
 
@@ -280,9 +276,9 @@ class AuthProvider with ChangeNotifier {
     try {
       final response = await http.put(url, headers: headers, body: body);
 
-      print(userId); // Debugging
-      print('Response status: ${response.statusCode}'); // Debugging
-      print('Edit Body: ${body}'); // Debugging
+      // print(userId); // Debugging
+      // print('Response status: ${response.statusCode}'); // Debugging
+      // print('Edit Body: ${body}'); // Debugging
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
