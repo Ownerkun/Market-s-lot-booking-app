@@ -22,36 +22,32 @@ class BookingProvider with ChangeNotifier {
   Map<String, List<DateTime>> get lotBookedDates => _lotBookedDates;
 
   // Fetch bookings for a landlord
-  Future<void> fetchLandlordBookings() async {
+  Future<void> fetchLandlordBookings({String? marketId}) async {
     _isLoading = true;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    if (token == null) {
-      _errorMessage = 'No token found. Please log in.';
-      _isLoading = false;
-      notifyListeners();
-      return;
-    }
-
-    final url = Uri.parse('$_baseUrl/landlord');
-    final headers = {
-      'Authorization': 'Bearer $token',
-    };
-
     try {
-      final response = await http.get(url, headers: headers);
+      final token = await _authProvider.getToken();
+      if (token == null) throw Exception('No auth token');
+
+      final url = marketId != null
+          ? Uri.parse('$_baseUrl/landlord?marketId=$marketId')
+          : Uri.parse('$_baseUrl/landlord');
+
+      final response = await http.get(url, headers: {
+        'Authorization': 'Bearer $token',
+      });
 
       if (response.statusCode == 200) {
-        _bookings = json.decode(response.body);
-        _errorMessage = null;
+        final data = json.decode(response.body);
+        if (data is! List) throw Exception('Invalid response format');
+        _bookings = data;
       } else {
-        _errorMessage = 'Failed to fetch bookings: ${response.body}';
+        throw Exception('Failed to load: ${response.statusCode}');
       }
     } catch (e) {
-      _errorMessage = 'Failed to fetch bookings: $e';
+      _errorMessage = e.toString();
+      rethrow; // Important to propagate the error
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -63,8 +59,7 @@ class BookingProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await _authProvider.getToken(); // Use decrypted token
 
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
@@ -84,6 +79,9 @@ class BookingProvider with ChangeNotifier {
       if (response.statusCode == 200) {
         _bookings = json.decode(response.body);
         _errorMessage = null;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout(); // Log out if token is invalid
       } else {
         _errorMessage = 'Failed to fetch bookings: ${response.body}';
       }
@@ -100,8 +98,7 @@ class BookingProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
+    final token = await _authProvider.getToken(); // Use decrypted token
 
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
@@ -125,7 +122,7 @@ class BookingProvider with ChangeNotifier {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
 
-        print("API Response for lot $lotId: ${response.body}");
+        // print("API Response for lot $lotId: ${response.body}");
 
         // Convert string dates to DateTime objects
         List<DateTime> bookedDates = [];
@@ -144,14 +141,16 @@ class BookingProvider with ChangeNotifier {
         notifyListeners();
 
         // If the API doesn't return an 'available' flag, we'll default to true
-        // The app will use the booked dates to determine if a specific day is available
         if (!data.containsKey('available')) {
           data['available'] = true;
         }
 
         return data;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout(); // Log out if token is invalid
+        return {'available': true, 'bookedDates': []};
       } else {
-        // Handle error but default to "no bookings" rather than "not available"
         _errorMessage = 'Failed to fetch availability: ${response.body}';
         _isLoading = false;
         notifyListeners();
@@ -169,7 +168,7 @@ class BookingProvider with ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    final token = await _authProvider.getToken();
+    final token = await _authProvider.getToken(); // Use decrypted token
 
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
@@ -195,7 +194,7 @@ class BookingProvider with ChangeNotifier {
         0,
       ).toIso8601String(); // Add UTC timezone indicator
 
-      print('Formatted date: $formattedDate'); // Debug log
+      // print('Formatted date: $formattedDate'); // Debug log
 
       final response = await http.post(
         url,
@@ -218,7 +217,7 @@ class BookingProvider with ChangeNotifier {
         return true;
       } else if (response.statusCode == 401) {
         _errorMessage = 'Session expired. Please log in again.';
-        await _authProvider.logout();
+        await _authProvider.logout(); // Log out if token is invalid
         return false;
       } else {
         _errorMessage = 'Failed to create booking: ${response.body}';
@@ -250,14 +249,10 @@ class BookingProvider with ChangeNotifier {
     }
 
     try {
-      final availability =
-          await fetchLotAvailabilityForMonth(lotId, month.month, month.year);
-
-      if (availability['bookedDates'] != null) {
-        _lotBookedDates[lotId] = (availability['bookedDates'] as List)
-            .map((dateStr) => DateTime.parse(dateStr))
-            .toList();
-      }
+      await Future.wait([
+        fetchLotAvailabilityForMonth(lotId, month.month, month.year),
+        loadPendingDatesForLot(lotId, month),
+      ]);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -271,5 +266,97 @@ class BookingProvider with ChangeNotifier {
         bookedDate.year == date.year &&
         bookedDate.month == date.month &&
         bookedDate.day == date.day);
+  }
+
+  Future<bool> updateBookingStatus(String bookingId, String status) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final token = await _authProvider.getToken();
+    if (token == null) {
+      _errorMessage = 'No token found. Please log in.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
+    final url = Uri.parse('$_baseUrl/$bookingId/status');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    try {
+      final response = await http.put(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'status': status,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        await fetchLandlordBookings();
+        _errorMessage = null;
+        return true;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout();
+        return false;
+      } else {
+        _errorMessage = 'Failed to update booking status: ${response.body}';
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Failed to update booking status: $e';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Add to BookingProvider class
+  Map<String, List<DateTime>> _lotPendingDates = {};
+
+  Future<void> loadPendingDatesForLot(String lotId, DateTime month) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final token = await _authProvider.getToken();
+    if (token == null) {
+      _errorMessage = 'No token found. Please log in.';
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final url = Uri.parse(
+          '$_baseUrl/lots/$lotId/pending-dates?month=${month.month}&year=${month.year}');
+      final headers = {
+        'Authorization': 'Bearer $token',
+      };
+
+      final response = await http.get(url, headers: headers);
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _lotPendingDates[lotId] = (data['pendingDates'] as List)
+            .map((dateStr) => DateTime.parse(dateStr))
+            .toList();
+      }
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  bool isDatePending(String lotId, DateTime date) {
+    final pendingDates = _lotPendingDates[lotId] ?? [];
+    return pendingDates.any((pendingDate) =>
+        pendingDate.year == date.year &&
+        pendingDate.month == date.month &&
+        pendingDate.day == date.day);
   }
 }

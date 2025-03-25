@@ -42,6 +42,16 @@ class MyApp extends StatelessWidget {
         fontFamily: 'Poppins',
         primaryColor: Colors.green,
         colorScheme: ColorScheme.light(primary: Colors.green),
+        tabBarTheme: TabBarTheme(
+          labelColor: Colors.white, // Active tab text color
+          unselectedLabelColor: Colors.white60, // Inactive tab text color
+          indicator: UnderlineTabIndicator(
+            borderSide: BorderSide(
+              width: 2,
+              color: Colors.white, // Active tab indicator color
+            ),
+          ),
+        ),
       ),
       home: AuthScreen(),
       routes: {

@@ -59,13 +59,32 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
     return _bookingProvider.isDateAvailable(widget.lot['id'], day);
   }
 
+  bool _isDatePending(DateTime day) {
+    return _bookingProvider.isDatePending(widget.lot['id'], day);
+  }
+
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    if (!isSameDay(_selectedDay, selectedDay) &&
-        _isDateAvailable(selectedDay)) {
-      setState(() {
-        _selectedDay = selectedDay;
-        _focusedDay = focusedDay;
-      });
+    if (!isSameDay(_selectedDay, selectedDay)) {
+      if (!_isDateAvailable(selectedDay)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('This date is already booked'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      } else if (_isDatePending(selectedDay)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('This date has a pending booking'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      } else {
+        setState(() {
+          _selectedDay = selectedDay;
+          _focusedDay = focusedDay;
+        });
+      }
     }
   }
 
@@ -308,8 +327,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                       ),
                                     ),
                                     enabledDayPredicate: (day) {
-                                      // Disable dates that are already booked
                                       return _isDateAvailable(day) &&
+                                          !_isDatePending(day) &&
                                           day.isAfter(DateTime.now()
                                               .subtract(Duration(days: 1)));
                                     },
@@ -328,6 +347,19 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                               ),
                                             ),
                                           );
+                                        } else if (_isDatePending(date)) {
+                                          return Positioned(
+                                            right: 1,
+                                            bottom: 1,
+                                            child: Container(
+                                              width: 8,
+                                              height: 8,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: Colors.orange,
+                                              ),
+                                            ),
+                                          );
                                         }
                                         return null;
                                       },
@@ -343,6 +375,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                     _buildLegendItem(Colors.green, 'Selected'),
                                     SizedBox(width: 16),
                                     _buildLegendItem(Colors.red, 'Booked'),
+                                    SizedBox(width: 16),
+                                    _buildLegendItem(Colors.orange, 'Pending'),
                                   ],
                                 ),
                               ),
@@ -383,7 +417,8 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
             onPressed: (widget.lot['available'] &&
                     !widget.isLandlord &&
                     !_isLoading &&
-                    _isDateAvailable(_selectedDay))
+                    _isDateAvailable(_selectedDay) &&
+                    !_isDatePending(_selectedDay))
                 ? _bookLot
                 : null,
             style: ElevatedButton.styleFrom(
