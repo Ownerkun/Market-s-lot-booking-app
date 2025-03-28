@@ -27,17 +27,17 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   late DateTime _focusedDay;
   late BookingProvider _bookingProvider;
   bool _isLoading = false;
+  DateTimeRange? _selectedDateRange;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = DateTime.now();
     _focusedDay = DateTime.now();
+    _selectedDateRange = null; // Initialize selected range as null
 
-    // Initialize _bookingProvider directly in initState
     _bookingProvider = Provider.of<BookingProvider>(context, listen: false);
 
-    // Use addPostFrameCallback to delay the call to loadBookedDates
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadBookedDates(_focusedDay);
     });
@@ -61,6 +61,17 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
 
   bool _isDatePending(DateTime day) {
     return _bookingProvider.isDatePending(widget.lot['id'], day);
+  }
+
+  bool _isDateRangeAvailable(DateTime start, DateTime end) {
+    DateTime current = start;
+    while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
+      if (!_isDateAvailable(current) || _isDatePending(current)) {
+        return false;
+      }
+      current = current.add(Duration(days: 1));
+    }
+    return true;
   }
 
   void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
@@ -88,13 +99,16 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
     }
   }
 
-  Future<void> _bookLot() async {
+  Future<void> _bookLot(DateTimeRange dateRange) async {
     setState(() {
       _isLoading = true;
     });
 
-    final success =
-        await _bookingProvider.requestBooking(widget.lot['id'], _selectedDay);
+    final success = await _bookingProvider.requestBooking(
+      widget.lot['id'],
+      dateRange.start,
+      dateRange.end,
+    );
 
     setState(() {
       _isLoading = false;
@@ -104,10 +118,13 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-              'Booking successful for ${DateFormat('MMMM d, yyyy').format(_selectedDay)}'),
+            'Booking successful for ${DateFormat('MMMM d').format(dateRange.start)} to ${DateFormat('MMMM d, yyyy').format(dateRange.end)}',
+          ),
           backgroundColor: Colors.green,
         ),
       );
+      // Refresh booked dates after successful booking
+      await _loadBookedDates(_focusedDay);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -310,8 +327,34 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                     focusedDay: _focusedDay,
                                     selectedDayPredicate: (day) =>
                                         isSameDay(_selectedDay, day),
-                                    onDaySelected: _onDaySelected,
-                                    onPageChanged: _onPageChanged,
+                                    rangeStartDay: _selectedDateRange?.start,
+                                    rangeEndDay: _selectedDateRange?.end,
+                                    calendarFormat: CalendarFormat.month,
+                                    rangeSelectionMode:
+                                        RangeSelectionMode.toggledOn,
+                                    onRangeSelected: (start, end, focusedDay) {
+                                      if (start == null || end == null) return;
+
+                                      final isRangeAvailable =
+                                          _isDateRangeAvailable(start, end);
+
+                                      if (!isRangeAvailable) {
+                                        ScaffoldMessenger.of(context)
+                                            .showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                'Some dates in this range are not available'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      } else {
+                                        setState(() {
+                                          _selectedDateRange = DateTimeRange(
+                                              start: start, end: end);
+                                          _focusedDay = focusedDay;
+                                        });
+                                      }
+                                    },
                                     calendarStyle: CalendarStyle(
                                       todayDecoration: BoxDecoration(
                                         color: Colors.blue.withOpacity(0.5),
@@ -321,6 +364,19 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                         color: Colors.green,
                                         shape: BoxShape.circle,
                                       ),
+                                      rangeStartDecoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      rangeEndDecoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      withinRangeTextStyle: TextStyle(
+                                        color: Colors.white,
+                                      ),
+                                      rangeHighlightColor:
+                                          Colors.green.withOpacity(0.2),
                                       disabledTextStyle: TextStyle(
                                         color: Colors.grey,
                                         decoration: TextDecoration.lineThrough,
@@ -414,12 +470,11 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
         ),
         child: SafeArea(
           child: ElevatedButton(
-            onPressed: (widget.lot['available'] &&
+            onPressed: (_selectedDateRange != null &&
+                    widget.lot['available'] &&
                     !widget.isLandlord &&
-                    !_isLoading &&
-                    _isDateAvailable(_selectedDay) &&
-                    !_isDatePending(_selectedDay))
-                ? _bookLot
+                    !_isLoading)
+                ? () => _bookLot(_selectedDateRange!)
                 : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,
@@ -434,8 +489,13 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
             child: _isLoading
                 ? CircularProgressIndicator(color: Colors.white)
                 : Text(
-                    'Book for ${DateFormat('MMM d').format(_selectedDay)}',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    _selectedDateRange != null
+                        ? 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
+                        : 'Select dates to book',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
           ),
         ),

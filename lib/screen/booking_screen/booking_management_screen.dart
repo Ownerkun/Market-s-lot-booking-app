@@ -16,6 +16,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
       GlobalKey<ScaffoldMessengerState>();
 
   bool _isInitialized = false;
+  bool _isUpdating = false;
   Map<String, List<dynamic>> _pendingBookingsByMarket = {};
   Map<String, List<dynamic>> _historyBookingsByMarket = {};
 
@@ -56,22 +57,22 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           final marketName = 'Market ${marketId.substring(0, 8)}...';
           final status = booking['status'];
 
+          // Add start and end dates to the booking object
+          final bookingWithDates = {
+            ...booking,
+            'marketName': marketName,
+            'startDate': booking['startDate'],
+            'endDate': booking['endDate'],
+          };
+
           if (status == 'PENDING') {
-            if (!_pendingBookingsByMarket.containsKey(marketId)) {
-              _pendingBookingsByMarket[marketId] = [];
-            }
-            _pendingBookingsByMarket[marketId]!.add({
-              ...booking,
-              'marketName': marketName,
-            });
+            _pendingBookingsByMarket
+                .putIfAbsent(marketId, () => [])
+                .add(bookingWithDates);
           } else {
-            if (!_historyBookingsByMarket.containsKey(marketId)) {
-              _historyBookingsByMarket[marketId] = [];
-            }
-            _historyBookingsByMarket[marketId]!.add({
-              ...booking,
-              'marketName': marketName,
-            });
+            _historyBookingsByMarket
+                .putIfAbsent(marketId, () => [])
+                .add(bookingWithDates);
           }
         } catch (e) {
           print('Error processing booking: $e');
@@ -83,8 +84,12 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
   Widget _buildBookingCard(dynamic booking, BuildContext context) {
     final status = booking['status'];
     final lotName = booking['lot']['name'];
-    final date = booking['date'];
+    final startDate = DateTime.parse(booking['startDate']);
+    final endDate = DateTime.parse(booking['endDate']);
     final tenantEmail = booking['tenant']?['email'] ?? 'N/A';
+
+    // Calculate duration in days
+    final duration = endDate.difference(startDate).inDays + 1;
 
     Color getStatusColor() {
       switch (status) {
@@ -94,6 +99,8 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           return Colors.green.shade100;
         case 'REJECTED':
           return Colors.red.shade100;
+        case 'CANCELLED':
+          return Colors.grey.shade100;
         default:
           return Colors.grey.shade100;
       }
@@ -140,7 +147,11 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
             ),
             SizedBox(height: 12),
             Text(
-              'Date: ${DateFormat('MMM d, yyyy').format(DateTime.parse(date))}',
+              'Dates: ${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(endDate)}',
+              style: TextStyle(color: Colors.black87),
+            ),
+            Text(
+              'Duration: $duration day${duration > 1 ? 's' : ''}',
               style: TextStyle(color: Colors.black87),
             ),
             Text(
@@ -153,25 +164,60 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   ElevatedButton.icon(
-                    onPressed: () {
-                      final marketId = booking['lot']?['marketId'];
-                      if (marketId != null) {
-                        _updateBookingStatus(
-                            booking['id'], 'APPROVED', marketId);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: Market ID not found')),
-                        );
-                      }
-                    },
-                    icon: Icon(Icons.check, color: Colors.white), // Icon color
+                    onPressed: _isUpdating
+                        ? null
+                        : () async {
+                            final confirmed = await showDialog<bool>(
+                              context: context,
+                              builder: (context) => AlertDialog(
+                                title: Text('Confirm Approval'),
+                                content: Text(
+                                    'Are you sure you want to approve this booking?'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, false),
+                                    child: Text('No'),
+                                  ),
+                                  ElevatedButton(
+                                    onPressed: () =>
+                                        Navigator.pop(context, true),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.green,
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    child: Text('Yes'),
+                                  ),
+                                ],
+                              ),
+                            );
+
+                            if (confirmed == true) {
+                              final marketId = booking['lot']?['marketId'];
+                              if (marketId != null) {
+                                _updateBookingStatus(
+                                    booking['id'], 'APPROVED', marketId);
+                              }
+                            }
+                          },
+                    icon: _isUpdating
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(Icons.check, color: Colors.white),
                     label: Text(
                       'Approve',
-                      style: TextStyle(color: Colors.white), // Text color
+                      style: TextStyle(color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green,
-                      foregroundColor: Colors.white, // Add this line
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
@@ -179,31 +225,112 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                   ),
                   SizedBox(width: 10),
                   ElevatedButton.icon(
-                    onPressed: () {
-                      final marketId = booking['lot']?['marketId'];
-                      if (marketId != null) {
-                        _updateBookingStatus(
-                            booking['id'], 'REJECTED', marketId);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: Market ID not found')),
-                        );
-                      }
-                    },
-                    icon: Icon(Icons.close, color: Colors.white), // Icon color
+                    onPressed: _isUpdating
+                        ? null
+                        : () async {
+                            final reason = await showDialog<String>(
+                              context: context,
+                              builder: (context) => RejectionReasonDialog(),
+                            );
+                            if (reason != null) {
+                              final marketId = booking['lot']?['marketId'];
+                              if (marketId != null) {
+                                _updateBookingStatus(
+                                    booking['id'], 'REJECTED', marketId);
+                              }
+                            }
+                          },
+                    icon: _isUpdating
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(Icons.close, color: Colors.white),
                     label: Text(
                       'Reject',
-                      style: TextStyle(color: Colors.white), // Text color
+                      style: TextStyle(color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
-                      foregroundColor: Colors.white, // Add this line
+                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
                   ),
                 ],
+              ),
+            if (status == 'APPROVED')
+              Padding(
+                padding: const EdgeInsets.only(top: 8.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _isUpdating
+                          ? null
+                          : () async {
+                              final confirmed = await showDialog<bool>(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: Text('Confirm Cancellation'),
+                                  content: Text(
+                                      'Are you sure you want to cancel this booking?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, false),
+                                      child: Text('No'),
+                                    ),
+                                    ElevatedButton(
+                                      onPressed: () =>
+                                          Navigator.pop(context, true),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.orange,
+                                        foregroundColor: Colors.white,
+                                      ),
+                                      child: Text('Yes'),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (confirmed == true) {
+                                final marketId = booking['lot']?['marketId'];
+                                if (marketId != null) {
+                                  _updateBookingStatus(
+                                      booking['id'], 'CANCELLED', marketId);
+                                }
+                              }
+                            },
+                      icon: _isUpdating
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(Icons.cancel_outlined, color: Colors.white),
+                      label: Text('Cancel Booking',
+                          style: TextStyle(color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
           ],
         ),
@@ -219,6 +346,8 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
         return Colors.green;
       case 'REJECTED':
         return Colors.red;
+      case 'CANCELLED':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -226,30 +355,90 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
 
   Future<void> _updateBookingStatus(
       String bookingId, String status, String marketId) async {
-    final bookingProvider =
-        Provider.of<BookingProvider>(context, listen: false);
+    if (_isUpdating) return;
 
-    final success =
-        await bookingProvider.updateBookingStatus(bookingId, status);
+    setState(() => _isUpdating = true);
 
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Booking $status successfully!'),
-          backgroundColor: status == 'APPROVED' ? Colors.green : Colors.red,
-        ),
+    try {
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+
+      // Handle rejection reason
+      String? reason;
+      if (status == 'REJECTED') {
+        reason = await showDialog<String>(
+          context: context,
+          builder: (context) => RejectionReasonDialog(),
+        );
+        if (reason == null) {
+          setState(() => _isUpdating = false);
+          return;
+        }
+      }
+
+      final success = await bookingProvider.updateBookingStatus(
+        bookingId,
+        status,
+        marketId: marketId,
+        reason: reason,
       );
-      // Refresh the data
-      await bookingProvider.fetchLandlordBookings();
-      _groupBookingsByMarket(bookingProvider.bookings);
-    } else {
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Booking $status successfully!'),
+            backgroundColor: _getStatusColor(status),
+          ),
+        );
+
+        // Refresh data
+        await bookingProvider.fetchLandlordBookings();
+
+        final booking = bookingProvider.bookings.firstWhere(
+          (b) => b['id'] == bookingId,
+          orElse: () => null,
+        );
+
+        if (booking != null && booking['lot'] != null) {
+          await bookingProvider.refreshLotAvailability(
+            booking['lot']['id'],
+            marketId: marketId,
+          );
+        }
+
+        _groupBookingsByMarket(bookingProvider.bookings);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(bookingProvider.errorMessage ??
+                'Failed to update booking status'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(bookingProvider.errorMessage ??
-              'Failed to update booking status'),
+          content: Text('Error updating booking: $e'),
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      setState(() => _isUpdating = false);
+    }
+  }
+
+  // Add this helper method to get appropriate status colors
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'APPROVED':
+        return Colors.green;
+      case 'REJECTED':
+        return Colors.red;
+      case 'CANCELLED':
+        return Colors.orange;
+      default:
+        return Colors.grey;
     }
   }
 
@@ -337,17 +526,73 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                 ? Center(child: CircularProgressIndicator())
                 : _pendingBookingsByMarket.isEmpty
                     ? _buildEmptyState('No pending booking requests')
-                    : _buildBookingsList(_pendingBookingsByMarket),
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          await bookingProvider.fetchLandlordBookings();
+                          _groupBookingsByMarket(bookingProvider.bookings);
+                        },
+                        child: _buildBookingsList(_pendingBookingsByMarket),
+                      ),
 
             // Booking History Tab
             bookingProvider.isLoading
                 ? Center(child: CircularProgressIndicator())
                 : _historyBookingsByMarket.isEmpty
                     ? _buildEmptyState('No booking history yet')
-                    : _buildBookingsList(_historyBookingsByMarket),
+                    : RefreshIndicator(
+                        onRefresh: () async {
+                          await bookingProvider.fetchLandlordBookings();
+                          _groupBookingsByMarket(bookingProvider.bookings);
+                        },
+                        child: _buildBookingsList(_historyBookingsByMarket),
+                      ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class RejectionReasonDialog extends StatefulWidget {
+  @override
+  _RejectionReasonDialogState createState() => _RejectionReasonDialogState();
+}
+
+class _RejectionReasonDialogState extends State<RejectionReasonDialog> {
+  final _reasonController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Rejection Reason'),
+      content: TextField(
+        controller: _reasonController,
+        decoration: InputDecoration(
+          hintText: 'Enter reason for rejection',
+          border: OutlineInputBorder(),
+        ),
+        maxLines: 3,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_reasonController.text),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+            foregroundColor: Colors.white,
+          ),
+          child: Text('Submit'),
+        ),
+      ],
     );
   }
 }

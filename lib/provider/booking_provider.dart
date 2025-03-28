@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -164,12 +165,15 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  Future<bool> requestBooking(String lotId, DateTime date) async {
+  Future<bool> requestBooking(
+    String lotId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
     _isLoading = true;
     notifyListeners();
 
-    final token = await _authProvider.getToken(); // Use decrypted token
-
+    final token = await _authProvider.getToken();
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
       _isLoading = false;
@@ -184,40 +188,49 @@ class BookingProvider with ChangeNotifier {
     };
 
     try {
-      // Create a UTC DateTime with complete ISO format
-      final formattedDate = DateTime.utc(
-        date.year,
-        date.month,
-        date.day,
+      final formattedStartDate = DateTime.utc(
+        startDate.year,
+        startDate.month,
+        startDate.day,
         12, // noon UTC
-        0,
-        0,
-      ).toIso8601String(); // Add UTC timezone indicator
+      ).toIso8601String();
 
-      // print('Formatted date: $formattedDate'); // Debug log
+      final formattedEndDate = DateTime.utc(
+        endDate.year,
+        endDate.month,
+        endDate.day,
+        12, // noon UTC
+      ).toIso8601String();
 
       final response = await http.post(
         url,
         headers: headers,
         body: jsonEncode({
           'lotId': lotId,
-          'date': formattedDate,
+          'startDate': formattedStartDate,
+          'endDate': formattedEndDate,
         }),
       );
 
       if (response.statusCode == 201) {
+        // Parse the response to get the booking details
+        final booking = json.decode(response.body);
+        final bookedStartDate = DateTime.parse(booking['startDate']);
+        final bookedEndDate = DateTime.parse(booking['endDate']);
+
+        // Cache all dates in the range as booked
+        final datesInRange = _getDatesInRange(bookedStartDate, bookedEndDate);
         if (_lotBookedDates.containsKey(lotId)) {
-          _lotBookedDates[lotId]!.add(date);
+          _lotBookedDates[lotId]!.addAll(datesInRange);
         } else {
-          _lotBookedDates[lotId] = [date];
+          _lotBookedDates[lotId] = datesInRange;
         }
+
         _errorMessage = null;
-        _isLoading = false;
-        notifyListeners();
         return true;
       } else if (response.statusCode == 401) {
         _errorMessage = 'Session expired. Please log in again.';
-        await _authProvider.logout(); // Log out if token is invalid
+        await _authProvider.logout();
         return false;
       } else {
         _errorMessage = 'Failed to create booking: ${response.body}';
@@ -232,8 +245,17 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  List<DateTime> getBookedDatesForLot(String lotId) {
-    return _lotBookedDates[lotId] ?? [];
+  List<DateTime> _getDatesInRange(DateTime startDate, DateTime endDate) {
+    final dates = <DateTime>[];
+    var currentDate = DateTime(startDate.year, startDate.month, startDate.day);
+    final end = DateTime(endDate.year, endDate.month, endDate.day);
+
+    while (currentDate.isBefore(end) || currentDate.isAtSameMomentAs(end)) {
+      dates.add(currentDate);
+      currentDate = currentDate.add(const Duration(days: 1));
+    }
+
+    return dates;
   }
 
   Future<void> loadBookedDatesForLot(String lotId, DateTime month) async {
@@ -268,7 +290,8 @@ class BookingProvider with ChangeNotifier {
         bookedDate.day == date.day);
   }
 
-  Future<bool> updateBookingStatus(String bookingId, String status) async {
+  Future<bool> updateBookingStatus(String bookingId, String status,
+      {String? marketId, String? reason}) async {
     _isLoading = true;
     notifyListeners();
 
@@ -280,23 +303,50 @@ class BookingProvider with ChangeNotifier {
       return false;
     }
 
-    final url = Uri.parse('$_baseUrl/$bookingId/status');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-
     try {
+      // Different endpoint for cancellation
+      final url = status == 'CANCELLED'
+          ? Uri.parse('$_baseUrl/$bookingId/cancel')
+          : Uri.parse('$_baseUrl/$bookingId/status');
+
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
       final response = await http.put(
         url,
         headers: headers,
-        body: jsonEncode({
-          'status': status,
-        }),
+        body: status == 'CANCELLED' ? null : jsonEncode({'status': status}),
       );
 
       if (response.statusCode == 200) {
-        await fetchLandlordBookings();
+        // Find the affected booking
+        final booking = _bookings.firstWhere(
+          (b) => b['id'] == bookingId,
+          orElse: () => null,
+        );
+
+        // Refresh data based on status
+        if (booking != null && booking['lot'] != null) {
+          final lotId = booking['lot']['id'];
+          final currentMonth = DateTime.now();
+
+          // For all status changes, refresh availability
+          await Future.wait([
+            fetchLotAvailabilityForMonth(
+                lotId, currentMonth.month, currentMonth.year),
+            loadPendingDatesForLot(lotId, currentMonth),
+          ]);
+
+          // Refresh bookings list with market context if available
+          if (marketId != null) {
+            await fetchLandlordBookings(marketId: marketId);
+          } else {
+            await fetchLandlordBookings();
+          }
+        }
+
         _errorMessage = null;
         return true;
       } else if (response.statusCode == 401) {
@@ -313,6 +363,36 @@ class BookingProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<void> _updateLotAvailability(
+    String lotId,
+    DateTime startDate,
+    DateTime endDate,
+    bool available,
+    String token,
+  ) async {
+    final url = Uri.parse('$_lotBaseUrl/$lotId/availability');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    // Create date range
+    final dates = _getDatesInRange(startDate, endDate);
+
+    for (final date in dates) {
+      final formattedDate = DateFormat('yyyy-MM-dd').format(date);
+
+      await http.put(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'date': formattedDate,
+          'available': available,
+        }),
+      );
     }
   }
 
@@ -358,5 +438,21 @@ class BookingProvider with ChangeNotifier {
         pendingDate.year == date.year &&
         pendingDate.month == date.month &&
         pendingDate.day == date.day);
+  }
+
+  Future<void> refreshLotAvailability(String lotId, {String? marketId}) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final now = DateTime.now();
+      await Future.wait([
+        fetchLotAvailabilityForMonth(lotId, now.month, now.year),
+        loadPendingDatesForLot(lotId, now),
+      ]);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 }
