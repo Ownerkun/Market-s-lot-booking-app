@@ -1,11 +1,12 @@
+// main.dart
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
-import 'package:market_lot_app/screen/market_screen/market_list_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/auth_screen/auth_screen.dart';
+import 'package:market_lot_app/screen/main_navigation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,19 +44,19 @@ class MyApp extends StatelessWidget {
         primaryColor: Colors.green,
         colorScheme: ColorScheme.light(primary: Colors.green),
         tabBarTheme: TabBarTheme(
-          labelColor: Colors.white, // Active tab text color
-          unselectedLabelColor: Colors.white60, // Inactive tab text color
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
           indicator: UnderlineTabIndicator(
             borderSide: BorderSide(
               width: 2,
-              color: Colors.white, // Active tab indicator color
+              color: Colors.white,
             ),
           ),
         ),
       ),
       home: AuthScreen(),
       routes: {
-        '/home': (context) => MarketListScreen(),
+        '/home': (context) => MainNavigationScreen(),
       },
     );
   }
