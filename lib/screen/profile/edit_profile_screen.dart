@@ -18,6 +18,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _loadProfileData();
+  }
+
+  void _loadProfileData() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _firstNameController.text = authProvider.userProfile?['firstName'] ?? '';
     _lastNameController.text = authProvider.userProfile?['lastName'] ?? '';
@@ -27,7 +31,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _selectedDate = DateTime.tryParse(birthDateString);
       if (_selectedDate != null) {
         _birthDateController.text =
-            DateFormat('yyyy-MM-dd').format(_selectedDate!);
+            DateFormat('MMMM d, yyyy').format(_selectedDate!);
       }
     }
   }
@@ -35,15 +39,29 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Future<void> _selectDate() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
-      initialDate: _selectedDate ?? DateTime.now(),
+      initialDate:
+          _selectedDate ?? DateTime.now().subtract(Duration(days: 365 * 18)),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.green,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
 
     if (pickedDate != null) {
       setState(() {
         _selectedDate = pickedDate;
-        _birthDateController.text = DateFormat('yyyy-MM-dd').format(pickedDate);
+        _birthDateController.text =
+            DateFormat('MMMM d, yyyy').format(pickedDate);
       });
     }
   }
@@ -59,57 +77,161 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         return;
       }
 
-      await authProvider.updateProfile(
-        firstName: _firstNameController.text,
-        lastName: _lastNameController.text,
-        birthDate: _selectedDate,
-      );
+      try {
+        await authProvider.updateProfile(
+          firstName: _firstNameController.text,
+          lastName: _lastNameController.text,
+          birthDate: _selectedDate,
+        );
 
-      Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Profile updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        Navigator.of(context).pop();
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update profile: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  InputDecoration _buildInputDecoration(String label, IconData? prefixIcon) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: Colors.grey.shade700),
+      prefixIcon:
+          prefixIcon != null ? Icon(prefixIcon, color: Colors.green) : null,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.green, width: 2),
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Edit Profile')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      appBar: AppBar(
+        title: Text('Edit Profile'),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        iconTheme: IconThemeData(color: Colors.black87),
+        actions: [
+          TextButton(
+            onPressed: _saveProfile,
+            child: Text(
+              'Save',
+              style: TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(24),
         child: Form(
           key: _formKey,
           child: Column(
             children: [
+              // Profile Picture
+              Center(
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundImage: NetworkImage(
+                        Provider.of<AuthProvider>(context)
+                                .userProfile?['profileImage'] ??
+                            'https://via.placeholder.com/150',
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.edit, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 32),
+
+              // Form Fields
               TextFormField(
                 controller: _firstNameController,
-                decoration: InputDecoration(
-                    labelText: 'First Name', border: OutlineInputBorder()),
+                decoration: _buildInputDecoration('First Name', Icons.person),
                 validator: (value) =>
                     value!.isEmpty ? 'Please enter your first name' : null,
               ),
-              SizedBox(height: 10),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _lastNameController,
-                decoration: InputDecoration(
-                    labelText: 'Last Name', border: OutlineInputBorder()),
+                decoration: _buildInputDecoration('Last Name', null),
                 validator: (value) =>
                     value!.isEmpty ? 'Please enter your last name' : null,
               ),
-              SizedBox(height: 10),
+              SizedBox(height: 16),
               TextFormField(
                 controller: _birthDateController,
-                decoration: InputDecoration(
-                    labelText: 'Birth Date', border: OutlineInputBorder()),
+                decoration:
+                    _buildInputDecoration('Birth Date', Icons.calendar_today),
                 readOnly: true,
                 onTap: _selectDate,
                 validator: (value) =>
                     value!.isEmpty ? 'Please select your birth date' : null,
               ),
-              SizedBox(height: 20),
-              ElevatedButton(
-                onPressed: _saveProfile,
-                child: Text('Save',
-                    style:
-                        TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              SizedBox(height: 32),
+
+              // Save Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saveProfile,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
+                  child: Text(
+                    'Save Changes',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
