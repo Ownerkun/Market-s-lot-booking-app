@@ -4,8 +4,24 @@ import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_details_screen.dart';
 
-class MarketMapView extends StatelessWidget {
+class MarketMapView extends StatefulWidget {
   const MarketMapView({Key? key}) : super(key: key);
+
+  @override
+  _MarketMapViewState createState() => _MarketMapViewState();
+}
+
+class _MarketMapViewState extends State<MarketMapView> {
+  double _scale = 1.0;
+  double _previousScale = 1.0;
+  Offset _offset = Offset.zero;
+  Offset _previousOffset = Offset.zero;
+  Offset _normalizedOffset = Offset.zero;
+  bool _isInteractingWithLot = false;
+
+  // Constants for zoom limits
+  static const double _minScale = 0.5;
+  static const double _maxScale = 3.0;
 
   @override
   Widget build(BuildContext context) {
@@ -15,47 +31,161 @@ class MarketMapView extends StatelessWidget {
         final authProvider = Provider.of<AuthProvider>(context);
         final isLandlord = authProvider.userRole == 'LANDLORD';
 
-        return Stack(
-          children: [
-            // Market Layout Background with grid
-            CustomPaint(
-              painter: GridPainter(),
-              size: Size(MediaQuery.of(context).size.width,
-                  MediaQuery.of(context).size.height),
-            ),
+        return GestureDetector(
+          onScaleStart: (details) {
+            _previousScale = _scale;
+            _previousOffset = details.focalPoint;
+            _isInteractingWithLot = false;
+          },
+          onScaleUpdate: (details) {
+            // Skip if interacting with a lot (for landlords)
+            if (isLandlord && _isPositionOverLot(details.focalPoint, lots)) {
+              _isInteractingWithLot = true;
+              return;
+            }
 
-            if (lots.isEmpty)
-              _buildEmptyView(context, isLandlord)
-            else
-              ..._buildLots(context, lots, isLandlord),
+            setState(() {
+              // Update scale with bounds
+              _scale =
+                  (_previousScale * details.scale).clamp(_minScale, _maxScale);
 
-            // Helper text for landlords
-            if (isLandlord && lots.isNotEmpty)
-              Positioned(
-                bottom: 16,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'Drag to reposition lots • Long press to edit',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
+              // Calculate new offset based on focal point
+              final newOffset = details.focalPoint - _previousOffset;
+              _offset += newOffset;
+              _previousOffset = details.focalPoint;
+
+              // Keep content centered by normalizing offset
+              _normalizedOffset = _offset / _scale;
+
+              // Enforce boundaries to prevent excessive panning
+              final viewSize = MediaQuery.of(context).size;
+              final contentSize = Size(viewSize.width * 2, viewSize.height * 2);
+
+              // Calculate bounds
+              final maxOffset = Offset(
+                contentSize.width * (_scale - 1),
+                contentSize.height * (_scale - 1),
+              );
+
+              // Clamp offset within bounds
+              _offset = Offset(
+                _offset.dx.clamp(-maxOffset.dx, maxOffset.dx),
+                _offset.dy.clamp(-maxOffset.dy, maxOffset.dy),
+              );
+            });
+          },
+          onScaleEnd: (details) {
+            _previousScale = _scale;
+            _isInteractingWithLot = false;
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Transform.scale(
+                scale: _scale,
+                child: Transform.translate(
+                  offset: _offset,
+                  child: Stack(
+                    children: [
+                      CustomPaint(
+                        painter: GridPainter(),
+                        size: Size(
+                          MediaQuery.of(context).size.width *
+                              4, // Increased grid size
+                          MediaQuery.of(context).size.height * 4,
+                        ),
                       ),
-                    ),
+                      if (lots.isEmpty)
+                        _buildEmptyView(context, isLandlord)
+                      else
+                        ..._buildLots(context, lots, isLandlord),
+                    ],
                   ),
                 ),
               ),
-          ],
+              _buildControls(isLandlord, lots),
+            ],
+          ),
         );
       },
     );
+  }
+
+  Widget _buildControls(bool isLandlord, List<dynamic> lots) {
+    return Stack(
+      children: [
+        // Reset zoom button
+        Positioned(
+          bottom: isLandlord ? 80 : 16,
+          right: 16,
+          child: FloatingActionButton(
+            mini: true,
+            backgroundColor: Colors.white,
+            onPressed: _resetView,
+            child: Icon(Icons.zoom_out_map, color: Colors.green),
+          ),
+        ),
+
+        // Helper text for landlords
+        if (isLandlord && lots.isNotEmpty)
+          Positioned(
+            bottom: 16,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  'Pinch to zoom • Long press to edit • Drag to reposition',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  bool _isPositionOverLot(Offset position, List<Map<String, dynamic>> lots) {
+    // Convert screen position to content position
+    final contentPosition = (position - _offset) / _scale;
+
+    return lots.any((lot) {
+      final lotRect = Rect.fromLTWH(
+        lot['position'].dx,
+        lot['position'].dy,
+        lot['size'].width,
+        lot['size'].height,
+      );
+
+      // Add some padding for easier touch detection
+      final paddedRect = lotRect.inflate(10.0);
+      return paddedRect.contains(contentPosition);
+    });
+  }
+
+  void _resetView() {
+    final viewSize = MediaQuery.of(context).size;
+    final contentSize = Size(viewSize.width * 4, viewSize.height * 4);
+
+    setState(() {
+      _scale = 1.0;
+
+      // Center the content
+      _offset = Offset(
+        (contentSize.width - viewSize.width) / -2,
+        (contentSize.height - viewSize.height) / -2,
+      );
+
+      _normalizedOffset = _offset / _scale;
+    });
   }
 
   Widget _buildEmptyView(BuildContext context, bool isLandlord) {
@@ -100,6 +230,9 @@ class MarketMapView extends StatelessWidget {
     bool isLandlord,
   ) {
     final marketProvider = Provider.of<MarketProvider>(context, listen: false);
+    final viewSize = MediaQuery.of(context).size;
+    final maxX = viewSize.width * 4 - 100; // Leave margin for lot width
+    final maxY = viewSize.height * 4 - 100; // Leave margin for lot height
 
     return List.generate(lots.length, (i) {
       return Positioned(
@@ -145,7 +278,18 @@ class MarketMapView extends StatelessWidget {
               : null,
           onPanUpdate: isLandlord
               ? (details) {
-                  marketProvider.updateLotPosition(i, details.delta);
+                  final adjustedDelta = details.delta / _scale;
+                  final lot = lots[i];
+                  final newPosition = lot['position'] + adjustedDelta;
+
+                  // Apply boundary constraints
+                  final boundedPosition = Offset(
+                    newPosition.dx.clamp(0.0, maxX),
+                    newPosition.dy.clamp(0.0, maxY),
+                  );
+
+                  marketProvider.updateLotPosition(
+                      i, boundedPosition - lot['position']);
                 }
               : null,
           onPanEnd: isLandlord

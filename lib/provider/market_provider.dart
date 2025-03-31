@@ -321,7 +321,17 @@ class MarketProvider with ChangeNotifier {
 
   // Update lot position in local state (for dragging)
   void updateLotPosition(int index, Offset delta) {
-    _lots[index]['position'] += delta;
+    if (index < 0 || index >= lots.length) return;
+
+    final lot = lots[index];
+    final newPosition = lot['position'] + delta;
+
+    // Update the lot position
+    lots[index] = {
+      ...lot,
+      'position': newPosition,
+    };
+
     notifyListeners();
   }
 }
