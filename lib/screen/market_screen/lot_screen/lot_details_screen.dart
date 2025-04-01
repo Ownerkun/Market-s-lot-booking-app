@@ -9,6 +9,7 @@ class LotDetailsScreen extends StatefulWidget {
   final String marketId;
   final Function(String, String, double, bool) onSave;
   final bool isLandlord;
+  final DateTime selectedDate;
 
   const LotDetailsScreen({
     Key? key,
@@ -16,6 +17,7 @@ class LotDetailsScreen extends StatefulWidget {
     required this.marketId,
     required this.onSave,
     required this.isLandlord,
+    required this.selectedDate,
   }) : super(key: key);
 
   @override
@@ -133,6 +135,118 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _showBookingConfirmation(DateTimeRange dateRange) async {
+    final duration = dateRange.end.difference(dateRange.start).inDays + 1;
+    final totalPrice = widget.lot['price'] * duration;
+
+    return showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.shopping_cart_checkout, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Confirm Booking'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Booking Details:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              SizedBox(height: 16),
+              _buildConfirmationRow(
+                Icons.store,
+                'Lot',
+                widget.lot['name'],
+              ),
+              SizedBox(height: 8),
+              _buildConfirmationRow(
+                Icons.calendar_today,
+                'Dates',
+                '${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d').format(dateRange.end)}',
+              ),
+              SizedBox(height: 8),
+              _buildConfirmationRow(
+                Icons.timer,
+                'Duration',
+                '$duration day${duration > 1 ? 's' : ''}',
+              ),
+              SizedBox(height: 8),
+              _buildConfirmationRow(
+                Icons.attach_money,
+                'Price per day',
+                '\$${widget.lot['price'].toStringAsFixed(2)}',
+              ),
+              Divider(),
+              _buildConfirmationRow(
+                Icons.summarize,
+                'Total Price',
+                '\$${totalPrice.toStringAsFixed(2)}',
+                isTotal: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _bookLot(dateRange);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              child: Text('Confirm Booking'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildConfirmationRow(IconData icon, String label, String value,
+      {bool isTotal = false}) {
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: Colors.green),
+        SizedBox(width: 8),
+        Text(
+          '$label:',
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontSize: 14,
+          ),
+        ),
+        Spacer(),
+        Text(
+          value,
+          style: TextStyle(
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
+            fontSize: isTotal ? 16 : 14,
+            color: isTotal ? Colors.green : Colors.black87,
+          ),
+        ),
+      ],
+    );
   }
 
   void _onPageChanged(DateTime focusedDay) {
@@ -474,7 +588,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                     widget.lot['available'] &&
                     !widget.isLandlord &&
                     !_isLoading)
-                ? () => _bookLot(_selectedDateRange!)
+                ? () => _showBookingConfirmation(_selectedDateRange!)
                 : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green,

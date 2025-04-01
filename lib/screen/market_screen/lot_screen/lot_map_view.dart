@@ -3,6 +3,8 @@ import 'package:market_lot_app/provider/market_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_details_screen.dart';
+import 'package:market_lot_app/provider/booking_provider.dart';
+import 'package:intl/intl.dart';
 
 class MarketMapView extends StatefulWidget {
   const MarketMapView({Key? key}) : super(key: key);
@@ -22,6 +24,9 @@ class _MarketMapViewState extends State<MarketMapView> {
   // Constants for zoom limits
   static const double _minScale = 0.5;
   static const double _maxScale = 3.0;
+
+  // Add date selection state
+  DateTime _selectedDate = DateTime.now();
 
   @override
   Widget build(BuildContext context) {
@@ -111,9 +116,89 @@ class _MarketMapViewState extends State<MarketMapView> {
     );
   }
 
+  Future<void> _selectDate(BuildContext context) async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.green,
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+      // Refresh availability for the selected date
+      await _refreshAvailability(context);
+    }
+  }
+
+  Future<void> _refreshAvailability(BuildContext context) async {
+    final bookingProvider =
+        Provider.of<BookingProvider>(context, listen: false);
+    final marketProvider = Provider.of<MarketProvider>(context, listen: false);
+
+    for (var lot in marketProvider.lots) {
+      await bookingProvider.refreshLotAvailability(
+        lot['id'],
+        marketId: marketProvider.marketId,
+      );
+    }
+  }
+
   Widget _buildControls(bool isLandlord, List<dynamic> lots) {
     return Stack(
       children: [
+        // Date picker button
+        Positioned(
+          top: 16,
+          left: 16,
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black12,
+                  blurRadius: 5,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.calendar_today, size: 18, color: Colors.green),
+                SizedBox(width: 8),
+                TextButton(
+                  onPressed: () => _selectDate(context),
+                  child: Text(
+                    DateFormat('MMM d, yyyy').format(_selectedDate),
+                    style: TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+
         // Reset zoom button
         Positioned(
           bottom: isLandlord ? 80 : 16,
@@ -246,6 +331,7 @@ class _MarketMapViewState extends State<MarketMapView> {
                   lot: lots[i],
                   isLandlord: isLandlord,
                   marketId: marketProvider.marketId,
+                  selectedDate: _selectedDate,
                   onSave: (name, details, price, available) async {
                     try {
                       final authProvider =
@@ -300,6 +386,7 @@ class _MarketMapViewState extends State<MarketMapView> {
           child: LotWidget(
             lot: lots[i],
             isLandlord: isLandlord,
+            selectedDate: _selectedDate,
           ),
         ),
       );
@@ -470,19 +557,23 @@ class _MarketMapViewState extends State<MarketMapView> {
 class LotWidget extends StatelessWidget {
   final Map<String, dynamic> lot;
   final bool isLandlord;
+  final DateTime selectedDate;
 
   const LotWidget({
     Key? key,
     required this.lot,
     required this.isLandlord,
+    required this.selectedDate,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final bookingProvider = Provider.of<BookingProvider>(context);
     final bool isAvailable = lot['available'] ?? false;
-    final Color lotColor = isAvailable
-        ? Color(0xFF4CAF50).withOpacity(0.7) // Green for available
-        : Color(0xFFE57373).withOpacity(0.7); // Red for unavailable
+    final bool isDateAvailable =
+        bookingProvider.isDateAvailable(lot['id'], selectedDate);
+    final bool isDatePending =
+        bookingProvider.isDatePending(lot['id'], selectedDate);
 
     return Material(
       color: Colors.transparent,
@@ -490,7 +581,7 @@ class LotWidget extends StatelessWidget {
         width: lot['size'].width,
         height: lot['size'].height,
         decoration: BoxDecoration(
-          color: lotColor,
+          color: _getLotColor(isAvailable, isDateAvailable, isDatePending),
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
@@ -500,7 +591,7 @@ class LotWidget extends StatelessWidget {
             ),
           ],
           border: Border.all(
-            color: isAvailable ? Colors.green[800]! : Colors.red[800]!,
+            color: _getBorderColor(isAvailable, isDateAvailable, isDatePending),
             width: 2,
           ),
         ),
@@ -548,10 +639,48 @@ class LotWidget extends StatelessWidget {
                 ),
               ),
             ),
+            Positioned(
+              bottom: 4,
+              left: 0,
+              right: 0,
+              child: Text(
+                _getStatusText(isAvailable, isDateAvailable, isDatePending),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Color _getLotColor(
+      bool isAvailable, bool isDateAvailable, bool isDatePending) {
+    if (!isAvailable) return Colors.grey.withOpacity(0.7);
+    if (isDatePending) return Colors.orange.withOpacity(0.7);
+    if (!isDateAvailable) return Colors.red.withOpacity(0.7);
+    return Colors.green.withOpacity(0.7);
+  }
+
+  Color _getBorderColor(
+      bool isAvailable, bool isDateAvailable, bool isDatePending) {
+    if (!isAvailable) return Colors.grey[800]!;
+    if (isDatePending) return Colors.orange[800]!;
+    if (!isDateAvailable) return Colors.red[800]!;
+    return Colors.green[800]!;
+  }
+
+  String _getStatusText(
+      bool isAvailable, bool isDateAvailable, bool isDatePending) {
+    if (!isAvailable) return 'Unavailable';
+    if (isDatePending) return 'Pending';
+    if (!isDateAvailable) return 'Booked';
+    return 'Available';
   }
 }
 
