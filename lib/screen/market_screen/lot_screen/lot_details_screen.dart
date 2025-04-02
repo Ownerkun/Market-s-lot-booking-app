@@ -281,7 +281,6 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                     background: Stack(
                       fit: StackFit.expand,
                       children: [
-                        // Lot image
                         Image.network(
                           'https://picsum.photos/800/600',
                           fit: BoxFit.cover,

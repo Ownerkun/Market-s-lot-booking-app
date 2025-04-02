@@ -325,7 +325,8 @@ class _MarketMapViewState extends State<MarketMapView> {
         top: lots[i]['position'].dy,
         child: GestureDetector(
           onTap: () {
-            Navigator.of(context).push(
+            Navigator.push(
+              context,
               MaterialPageRoute(
                 builder: (context) => LotDetailsScreen(
                   lot: lots[i],

@@ -244,6 +244,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
+              heroTag: 'addMarketButton', // Add this unique hero tag
             )
           : null,
     );
@@ -323,62 +324,26 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            Navigator.of(context).push(
+            Navigator.push(
+              context,
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) =>
                     ChangeNotifierProvider(
                   create: (_) => MarketProvider(widget.market['id']),
                   child: MarketLayoutScreen(marketId: widget.market['id']),
                 ),
-                transitionDuration: Duration(milliseconds: 300),
-                reverseTransitionDuration: Duration(milliseconds: 150),
                 transitionsBuilder:
                     (context, animation, secondaryAnimation, child) {
-                  var begin = Offset(0.0, 0.1);
-                  var end = Offset.zero;
-                  var curve = Curves.easeOutCubic;
-
-                  var fadeAnimation = Tween(
-                    begin: 0.0,
-                    end: 1.0,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: Interval(0.0, 0.5, curve: curve),
-                    ),
-                  );
-
-                  var slideAnimation = Tween(
-                    begin: begin,
-                    end: end,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: curve,
-                    ),
-                  );
-
-                  var scaleAnimation = Tween(
-                    begin: 0.95,
-                    end: 1.0,
-                  ).animate(
-                    CurvedAnimation(
-                      parent: animation,
-                      curve: curve,
-                    ),
+                  final fadeAnimation = animation.drive(
+                    CurveTween(curve: Curves.easeOut),
                   );
 
                   return FadeTransition(
                     opacity: fadeAnimation,
-                    child: SlideTransition(
-                      position: slideAnimation,
-                      child: Transform.scale(
-                        scale: scaleAnimation.value,
-                        child: child,
-                      ),
-                    ),
+                    child: child,
                   );
                 },
+                transitionDuration: Duration(milliseconds: 300),
               ),
             );
           },
@@ -393,15 +358,12 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Hero(
-                    tag: 'market-image-${widget.market['id']}',
-                    child: Image.network(
-                      widget.market['imageUrl'] ??
-                          'https://picsum.photos/400/200',
-                      width: double.infinity,
-                      height: 180,
-                      fit: BoxFit.cover,
-                    ),
+                  Image.network(
+                    widget.market['imageUrl'] ??
+                        'https://picsum.photos/400/200',
+                    width: double.infinity,
+                    height: 180,
+                    fit: BoxFit.cover,
                   ),
                   Padding(
                     padding: EdgeInsets.all(16),

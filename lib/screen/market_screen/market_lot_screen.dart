@@ -120,6 +120,7 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
               label: Text(_isListView ? 'Add Lot' : 'Add Space'),
               icon: Icon(Icons.add),
               backgroundColor: Colors.green,
+              heroTag: 'addLotButton',
             )
           : null,
     );

@@ -40,6 +40,10 @@ class MyApp extends StatelessWidget {
       title: 'Market Booking App',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        floatingActionButtonTheme: FloatingActionButtonThemeData(
+          // This disables the default hero animation for FABs
+          enableFeedback: true,
+        ),
         fontFamily: 'Poppins',
         primaryColor: Colors.green,
         colorScheme: ColorScheme.light(primary: Colors.green),
