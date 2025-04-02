@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
@@ -25,60 +26,104 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
-      _fetchAndGroupBookings();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _fetchAndGroupBookings();
+        }
+      });
     }
   }
 
   void _fetchAndGroupBookings() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final bookingProvider =
-          Provider.of<BookingProvider>(context, listen: false);
+    final bookingProvider =
+        Provider.of<BookingProvider>(context, listen: false);
 
-      bookingProvider.fetchLandlordBookings().then((_) {
+    bookingProvider.fetchLandlordBookings().then((_) {
+      if (mounted) {
         print('Full booking data: ${jsonEncode(bookingProvider.bookings)}');
         _groupBookingsByMarket(bookingProvider.bookings);
-      }).catchError((error) {
+      }
+    }).catchError((error) {
+      if (mounted) {
         print('Error fetching bookings: $error');
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load bookings')),
+          SnackBar(
+            content: Text('Failed to load bookings: ${error.toString()}'),
+            backgroundColor: Colors.red,
+          ),
         );
-      });
+      }
     });
   }
 
   void _groupBookingsByMarket(List<dynamic> bookings) {
-    setState(() {
-      _pendingBookingsByMarket = {};
-      _historyBookingsByMarket = {};
+    if (!mounted) return;
+
+    try {
+      final pending = <String, List<dynamic>>{};
+      final history = <String, List<dynamic>>{};
 
       for (var booking in bookings) {
         try {
-          final marketId = booking['lot']?['marketId'] ?? 'unknown';
-          final marketName = 'Market ${marketId.substring(0, 8)}...';
-          final status = booking['status'];
+          final lot = booking['lot'] as Map<String, dynamic>?;
+          if (lot == null) {
+            print('Warning: Booking has no lot information');
+            continue;
+          }
 
-          // Add start and end dates to the booking object
+          final marketId = lot['marketId']?.toString() ?? 'unknown';
+          final market = lot['market'] as Map<String, dynamic>?;
+          final marketName = booking['lot']?['market']?['name'] ??
+              'Market ${marketId.substring(0, 8)}...';
+          final status =
+              booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
+
           final bookingWithDates = {
             ...booking,
             'marketName': marketName,
             'startDate': booking['startDate'],
             'endDate': booking['endDate'],
+            'processedAt': DateTime.now().toIso8601String(), // For debugging
           };
 
-          if (status == 'PENDING') {
-            _pendingBookingsByMarket
-                .putIfAbsent(marketId, () => [])
-                .add(bookingWithDates);
-          } else {
-            _historyBookingsByMarket
-                .putIfAbsent(marketId, () => [])
-                .add(bookingWithDates);
+          switch (status) {
+            case 'PENDING':
+              pending.putIfAbsent(marketId, () => []).add(bookingWithDates);
+              break;
+            default:
+              history.putIfAbsent(marketId, () => []).add(bookingWithDates);
+              break;
           }
-        } catch (e) {
+        } catch (e, stackTrace) {
           print('Error processing booking: $e');
+          print('Stack trace: $stackTrace');
+          continue; // Skip this booking but continue processing others
         }
       }
-    });
+
+      // Sort bookings by date
+      for (var marketBookings in [...pending.values, ...history.values]) {
+        marketBookings.sort((a, b) {
+          final aDate = DateTime.parse(a['startDate']);
+          final bDate = DateTime.parse(b['startDate']);
+          return bDate.compareTo(aDate); // Most recent first
+        });
+      }
+
+      setState(() {
+        _pendingBookingsByMarket = pending;
+        _historyBookingsByMarket = history;
+      });
+    } catch (e, stackTrace) {
+      print('Error grouping bookings: $e');
+      print('Stack trace: $stackTrace');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error processing bookings'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Widget _buildBookingCard(dynamic booking, BuildContext context) {

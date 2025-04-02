@@ -6,8 +6,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class BookingProvider with ChangeNotifier {
-  final AuthProvider _authProvider;
-  BookingProvider(this._authProvider);
+  AuthProvider _authProvider;
 
   final String _baseUrl = "http://localhost:3002/bookings";
   final String _lotBaseUrl = "http://localhost:3002/lots";
@@ -15,6 +14,24 @@ class BookingProvider with ChangeNotifier {
   List<dynamic> _bookings = [];
   String? _errorMessage;
   Map<String, List<DateTime>> _lotBookedDates = {};
+
+  BookingProvider(this._authProvider);
+
+  // Add update method
+  BookingProvider update(AuthProvider authProvider) {
+    _authProvider = authProvider;
+
+    // Clear cached data when auth changes
+    _bookings = [];
+    _lotBookedDates = {};
+    _lotPendingDates = {};
+    _errorMessage = null;
+    _isLoading = false;
+
+    // Notify listeners of state change
+    notifyListeners();
+    return this;
+  }
 
   // Getters
   bool get isLoading => _isLoading;
@@ -29,26 +46,60 @@ class BookingProvider with ChangeNotifier {
 
     try {
       final token = await _authProvider.getToken();
-      if (token == null) throw Exception('No auth token');
+      if (token == null) {
+        throw Exception('Authentication token not found');
+      }
 
       final url = marketId != null
           ? Uri.parse('$_baseUrl/landlord?marketId=$marketId')
           : Uri.parse('$_baseUrl/landlord');
 
-      final response = await http.get(url, headers: {
-        'Authorization': 'Bearer $token',
-      });
+      print('Fetching bookings from: ${url.toString()}'); // Debug URL
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('Response status: ${response.statusCode}'); // Debug status code
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data is! List) throw Exception('Invalid response format');
-        _bookings = data;
+        final responseBody = json.decode(response.body);
+        print(
+            'Raw response: ${json.encode(responseBody)}'); // Debug raw response
+
+        if (responseBody is! List) {
+          throw Exception(
+              'Invalid response format: expected array, got ${responseBody.runtimeType}');
+        }
+
+        // Validate and transform booking data
+        _bookings = responseBody.map((booking) {
+          if (booking['lot'] == null) {
+            print(
+                'Warning: Booking without lot information found: ${booking['id']}');
+          }
+          return booking;
+        }).toList();
+
+        _errorMessage = null;
+        print('Successfully loaded ${_bookings.length} bookings');
+      } else if (response.statusCode == 401) {
+        print('Authentication failed: Token expired or invalid');
+        await _authProvider.logout();
+        throw Exception('Session expired. Please log in again.');
       } else {
-        throw Exception('Failed to load: ${response.statusCode}');
+        throw Exception(
+            'Failed to load bookings: ${response.statusCode}\n${response.body}');
       }
-    } catch (e) {
-      _errorMessage = e.toString();
-      rethrow; // Important to propagate the error
+    } catch (e, stackTrace) {
+      _errorMessage = 'Failed to fetch bookings: ${e.toString()}';
+      print('Error in fetchLandlordBookings: $e');
+      print('Stack trace: $stackTrace');
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
