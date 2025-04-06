@@ -102,38 +102,90 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   }
 
   Future<void> _bookLot(DateTimeRange dateRange) async {
-    setState(() {
-      _isLoading = true;
-    });
+    try {
+      setState(() => _isLoading = true);
 
-    final success = await _bookingProvider.requestBooking(
-      widget.lot['id'],
-      dateRange.start,
-      dateRange.end,
-    );
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+      final success = await bookingProvider.requestBooking(
+        widget.lot['id'],
+        dateRange.start,
+        dateRange.end,
+      );
 
-    setState(() {
-      _isLoading = false;
-    });
+      if (success) {
+        // Refresh lot availability and booked dates
+        await Future.wait([
+          bookingProvider.refreshLotAvailability(widget.lot['id']),
+          _loadBookedDates(_focusedDay),
+        ]);
 
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Booking successful for ${DateFormat('MMMM d').format(dateRange.start)} to ${DateFormat('MMMM d, yyyy').format(dateRange.end)}',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Booking confirmed for ${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d').format(dateRange.end)}',
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+
+        // Reset selection
+        setState(() {
+          _selectedDateRange = null;
+        });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.error_outline, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                        bookingProvider.errorMessage ?? 'Failed to book lot'),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error booking lot: $e'); // For debugging
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('An error occurred: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
           ),
-          backgroundColor: Colors.green,
-        ),
-      );
-      // Refresh booked dates after successful booking
-      await _loadBookedDates(_focusedDay);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_bookingProvider.errorMessage ?? 'Failed to book lot'),
-          backgroundColor: Colors.red,
-        ),
-      );
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -163,11 +215,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
               Text('Booking Details:',
                   style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 16),
-              _buildConfirmationRow(
-                Icons.store,
-                'Lot',
-                widget.lot['name'],
-              ),
+              _buildConfirmationRow(Icons.store, 'Lot', widget.lot['name']),
               SizedBox(height: 8),
               _buildConfirmationRow(
                 Icons.calendar_today,
@@ -198,10 +246,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: Colors.grey[600]),
-              ),
+              child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
             ),
             ElevatedButton(
               onPressed: () {

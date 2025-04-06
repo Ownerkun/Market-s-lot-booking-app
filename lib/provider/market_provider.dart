@@ -6,17 +6,23 @@ import 'package:market_lot_app/provider/auth_provider.dart';
 import 'dart:math';
 
 class MarketProvider with ChangeNotifier {
+  final AuthProvider _authProvider;
+  final Map<String, List<Map<String, dynamic>>> _bookings = {};
   List<Map<String, dynamic>> _lots = [];
   bool _isLoading = true;
   Map<String, dynamic>? _marketInfo;
-  MarketProvider(this._marketId);
+  MarketProvider(this._marketId, this._authProvider);
   String _marketId;
+
+  final Map<String, Set<DateTime>> _lotPendingDates = {};
+  String? _errorMessage;
 
   // Getters
   List<Map<String, dynamic>> get lots => _lots;
   bool get isLoading => _isLoading;
   Map<String, dynamic>? get marketInfo => _marketInfo;
   String get marketId => _marketId;
+  String? get errorMessage => _errorMessage;
 
   // Initialize data
   Future<void> init(BuildContext context) async {
@@ -495,5 +501,272 @@ class MarketProvider with ChangeNotifier {
     };
 
     notifyListeners();
+  }
+
+  Future<bool> requestBooking(
+    BuildContext context,
+    String lotId,
+    DateTime startDate,
+    DateTime endDate,
+  ) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getToken();
+
+      if (token == null) {
+        throw Exception('Authentication required');
+      }
+
+      final url = Uri.parse('http://localhost:3002/bookings');
+      final headers = {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      };
+
+      final formattedStartDate = startDate.toIso8601String();
+      final formattedEndDate = endDate.toIso8601String();
+
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: json.encode({
+          'lotId': lotId,
+          'startDate': formattedStartDate,
+          'endDate': formattedEndDate,
+          'marketId': _marketId,
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        // Update local pending dates
+        final datesInRange = _getDatesInRange(startDate, endDate);
+        _lotPendingDates.update(
+          lotId,
+          (dates) => dates..addAll(datesInRange),
+          ifAbsent: () => datesInRange,
+        );
+
+        notifyListeners();
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.white),
+                  SizedBox(width: 8),
+                  Text('Booking request sent successfully'),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+
+        _errorMessage = null;
+        await loadBookingsForLot(lotId);
+        return true;
+      } else {
+        final error = json.decode(response.body)['message'] ??
+            'Failed to request booking';
+        throw Exception(error);
+      }
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Booking request failed: $_errorMessage')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+
+      return false;
+    }
+  }
+
+  // Helper method to get dates in range
+  Set<DateTime> _getDatesInRange(DateTime start, DateTime end) {
+    final dates = <DateTime>{};
+    var current = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+
+    while (!current.isAfter(endDate)) {
+      dates.add(current);
+      current = current.add(Duration(days: 1));
+    }
+
+    return dates;
+  }
+
+  // Method to check if a date is pending for a lot
+  bool isDatePending(String lotId, DateTime date) {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    return _lotPendingDates[lotId]?.contains(normalizedDate) ?? false;
+  }
+
+  bool isDatePendingForUser(String lotId, DateTime date) {
+    try {
+      final normalizedDate = DateTime(date.year, date.month, date.day);
+      final pendingDates = _lotPendingDates[lotId];
+
+      if (pendingDates == null || !pendingDates.contains(normalizedDate)) {
+        return false;
+      }
+
+      final currentUserId = _authProvider.userId;
+      if (currentUserId == null) return false;
+
+      return (_bookings[lotId] ?? []).any((booking) => _isUsersPendingBooking(
+          booking, lotId, normalizedDate, currentUserId));
+    } catch (e) {
+      print('Error checking pending date for user: $e');
+      return false;
+    }
+  }
+
+  bool _isUsersPendingBooking(
+    Map<String, dynamic> booking,
+    String lotId,
+    DateTime date,
+    String currentUserId,
+  ) {
+    if (!booking.containsKey('startDate') ||
+        !booking.containsKey('endDate') ||
+        !booking.containsKey('status') ||
+        !booking.containsKey('tenant')) {
+      return false;
+    }
+
+    final startDate = DateTime.tryParse(booking['startDate']);
+    final endDate = DateTime.tryParse(booking['endDate']);
+    if (startDate == null || endDate == null) return false;
+
+    final normalizedStart =
+        DateTime(startDate.year, startDate.month, startDate.day);
+    final normalizedEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+    return !date.isBefore(normalizedStart) &&
+        !date.isAfter(normalizedEnd) &&
+        booking['tenant']['id'] == currentUserId &&
+        booking['status'] == 'PENDING';
+  }
+
+  // Clear pending dates for a lot
+  void clearPendingDates(String lotId) {
+    _lotPendingDates.remove(lotId);
+    notifyListeners();
+  }
+
+  // Add this method to load bookings for a lot
+  Future<void> loadBookingsForLot(String lotId) async {
+    try {
+      final token = await _authProvider.getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final response = await http.get(
+        Uri.parse('http://localhost:3002/bookings?lotId=$lotId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        _bookings[lotId] = List<Map<String, dynamic>>.from(data);
+        notifyListeners();
+      } else {
+        throw Exception('Failed to load bookings');
+      }
+    } catch (e) {
+      print('Error loading bookings: $e'); // For debugging
+      _bookings[lotId] = [];
+    }
+  }
+
+  // Add this method to clear bookings for a lot
+  void clearBookings(String lotId) {
+    _bookings.remove(lotId);
+    notifyListeners();
+  }
+
+  bool isDateAvailable(String lotId, DateTime date) {
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final bookingsForLot = _bookings[lotId] ?? [];
+
+    return !bookingsForLot.any((booking) {
+      try {
+        // Validate booking data
+        if (booking == null ||
+            !booking.containsKey('startDate') ||
+            !booking.containsKey('endDate') ||
+            !booking.containsKey('status')) {
+          return false;
+        }
+
+        // Parse dates
+        final startDate = DateTime.tryParse(booking['startDate']);
+        final endDate = DateTime.tryParse(booking['endDate']);
+        if (startDate == null || endDate == null) return false;
+
+        // Normalize dates for comparison
+        final normalizedStart =
+            DateTime(startDate.year, startDate.month, startDate.day);
+        final normalizedEnd =
+            DateTime(endDate.year, endDate.month, endDate.day);
+
+        return !normalizedDate.isBefore(normalizedStart) &&
+            !normalizedDate.isAfter(normalizedEnd) &&
+            booking['status'] == 'APPROVED';
+      } catch (e) {
+        print('Error checking booking availability: $e');
+        return false;
+      }
+    });
+  }
+
+  Future<void> loadBookedDatesForLot(String lotId, DateTime date) async {
+    try {
+      final token = await _authProvider.getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final formattedDate = date.toIso8601String();
+      final url =
+          Uri.parse('http://localhost:3002/bookings').replace(queryParameters: {
+        'lotId': lotId,
+        'date': formattedDate,
+      });
+
+      final response = await http.get(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        _bookings[lotId] = List<Map<String, dynamic>>.from(data);
+        notifyListeners();
+      } else {
+        throw Exception('Failed to load bookings: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error loading bookings: $e');
+      _bookings[lotId] = [];
+      rethrow;
+    }
   }
 }

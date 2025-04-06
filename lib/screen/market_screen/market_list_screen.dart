@@ -329,7 +329,10 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
               PageRouteBuilder(
                 pageBuilder: (context, animation, secondaryAnimation) =>
                     ChangeNotifierProvider(
-                  create: (_) => MarketProvider(widget.market['id']),
+                  create: (_) => MarketProvider(
+                    widget.market['id'],
+                    Provider.of<AuthProvider>(context, listen: false),
+                  ),
                   child: MarketLayoutScreen(marketId: widget.market['id']),
                 ),
                 transitionsBuilder:

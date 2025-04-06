@@ -484,11 +484,57 @@ class BookingProvider with ChangeNotifier {
   }
 
   bool isDatePending(String lotId, DateTime date) {
-    final pendingDates = _lotPendingDates[lotId] ?? [];
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+    final pendingDates = _lotPendingDates[lotId];
+
+    if (pendingDates == null) return false;
+
     return pendingDates.any((pendingDate) =>
-        pendingDate.year == date.year &&
-        pendingDate.month == date.month &&
-        pendingDate.day == date.day);
+        pendingDate.year == normalizedDate.year &&
+        pendingDate.month == normalizedDate.month &&
+        pendingDate.day == normalizedDate.day);
+  }
+
+  bool isDatePendingForCurrentUser(String lotId, DateTime date) {
+    final currentUserId = _authProvider.userId;
+    if (currentUserId == null) return false;
+
+    final normalizedDate = DateTime(date.year, date.month, date.day);
+
+    return _bookings.any((booking) =>
+        _isUsersPendingBooking(booking, lotId, normalizedDate, currentUserId));
+  }
+
+  bool _isUsersPendingBooking(
+    Map<String, dynamic> booking,
+    String lotId,
+    DateTime date,
+    String currentUserId,
+  ) {
+    try {
+      if (!booking.containsKey('startDate') ||
+          !booking.containsKey('endDate') ||
+          !booking.containsKey('status') ||
+          !booking.containsKey('tenant')) {
+        return false;
+      }
+
+      final startDate = DateTime.tryParse(booking['startDate']);
+      final endDate = DateTime.tryParse(booking['endDate']);
+      if (startDate == null || endDate == null) return false;
+
+      final normalizedStart =
+          DateTime(startDate.year, startDate.month, startDate.day);
+      final normalizedEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+      return !date.isBefore(normalizedStart) &&
+          !date.isAfter(normalizedEnd) &&
+          booking['tenant']['id'] == currentUserId &&
+          booking['status'] == 'PENDING';
+    } catch (e) {
+      print('Error checking user pending booking: $e');
+      return false;
+    }
   }
 
   Future<void> refreshLotAvailability(String lotId, {String? marketId}) async {

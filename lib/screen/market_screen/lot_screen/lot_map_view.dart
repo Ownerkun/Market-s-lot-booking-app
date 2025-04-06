@@ -28,6 +28,62 @@ class _MarketMapViewState extends State<MarketMapView> {
 
   // Add date selection state
   DateTime _selectedDate = DateTime.now();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDate = DateTime.now();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadInitialData(context);
+    });
+  }
+
+  Future<void> _loadInitialData(BuildContext context) async {
+    try {
+      setState(() => _isLoading = true);
+
+      final marketProvider =
+          Provider.of<MarketProvider>(context, listen: false);
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+
+      // Load lots if needed
+      if (marketProvider.lots.isEmpty) {
+        await marketProvider.fetchLots(context);
+      }
+
+      // Load bookings for all lots
+      await _refreshAvailability(context);
+
+      // Load tenant bookings if applicable
+      if (authProvider.userRole == 'TENANT') {
+        await bookingProvider.fetchTenantBookings();
+      }
+    } catch (e) {
+      print('Error loading initial data: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to load data')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -148,15 +204,46 @@ class _MarketMapViewState extends State<MarketMapView> {
   }
 
   Future<void> _refreshAvailability(BuildContext context) async {
-    final bookingProvider =
-        Provider.of<BookingProvider>(context, listen: false);
-    final marketProvider = Provider.of<MarketProvider>(context, listen: false);
+    try {
+      setState(() => _isLoading = true);
 
-    for (var lot in marketProvider.lots) {
-      await bookingProvider.refreshLotAvailability(
-        lot['id'],
-        marketId: marketProvider.marketId,
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+      final marketProvider =
+          Provider.of<MarketProvider>(context, listen: false);
+
+      // Load availability for all lots concurrently
+      await Future.wait(
+        marketProvider.lots.map((lot) => bookingProvider.loadBookedDatesForLot(
+              lot['id'],
+              _selectedDate,
+            )),
       );
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error refreshing availability: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to load availability')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -684,10 +771,25 @@ class LotWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final bookingProvider = Provider.of<BookingProvider>(context);
     final bool isAvailable = lot['available'] ?? false;
+    final normalizedDate = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+    );
+
     final bool isDateAvailable =
-        bookingProvider.isDateAvailable(lot['id'], selectedDate);
+        bookingProvider.isDateAvailable(lot['id'], normalizedDate);
     final bool isDatePending =
-        bookingProvider.isDatePending(lot['id'], selectedDate);
+        bookingProvider.isDatePending(lot['id'], normalizedDate);
+    final bool isMyPending =
+        _isMyPendingBooking(context, lot['id'], normalizedDate);
+
+    final displayStatus = _determineDisplayStatus(
+      isAvailable,
+      isDateAvailable,
+      isDatePending,
+      isMyPending,
+    );
 
     return Material(
       color: Colors.transparent,
@@ -695,7 +797,7 @@ class LotWidget extends StatelessWidget {
         width: lot['size'].width,
         height: lot['size'].height,
         decoration: BoxDecoration(
-          color: _getLotColor(isAvailable, isDateAvailable, isDatePending),
+          color: displayStatus.color,
           borderRadius: BorderRadius.circular(8),
           boxShadow: [
             BoxShadow(
@@ -705,7 +807,7 @@ class LotWidget extends StatelessWidget {
             ),
           ],
           border: Border.all(
-            color: _getBorderColor(isAvailable, isDateAvailable, isDatePending),
+            color: displayStatus.borderColor,
             width: 2,
           ),
         ),
@@ -758,7 +860,7 @@ class LotWidget extends StatelessWidget {
               left: 0,
               right: 0,
               child: Text(
-                _getStatusText(isAvailable, isDateAvailable, isDatePending),
+                displayStatus.text,
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 10,
@@ -773,29 +875,79 @@ class LotWidget extends StatelessWidget {
     );
   }
 
-  Color _getLotColor(
-      bool isAvailable, bool isDateAvailable, bool isDatePending) {
-    if (!isAvailable) return Colors.grey.withOpacity(0.7);
-    if (isDatePending) return Colors.orange.withOpacity(0.7);
-    if (!isDateAvailable) return Colors.red.withOpacity(0.7);
-    return Colors.green.withOpacity(0.7);
+  bool _isMyPendingBooking(BuildContext context, String lotId, DateTime date) {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+      final currentUserId = authProvider.userId;
+
+      if (currentUserId == null) return false;
+
+      final normalizedDate = DateTime(date.year, date.month, date.day);
+      return bookingProvider.isDatePendingForCurrentUser(lotId, normalizedDate);
+    } catch (e) {
+      print('Error checking pending booking: $e');
+      return false;
+    }
   }
 
-  Color _getBorderColor(
-      bool isAvailable, bool isDateAvailable, bool isDatePending) {
-    if (!isAvailable) return Colors.grey[800]!;
-    if (isDatePending) return Colors.orange[800]!;
-    if (!isDateAvailable) return Colors.red[800]!;
-    return Colors.green[800]!;
-  }
+  DisplayStatus _determineDisplayStatus(
+    bool isAvailable,
+    bool isDateAvailable,
+    bool isDatePending,
+    bool isMyPending,
+  ) {
+    if (!isAvailable) {
+      return DisplayStatus(
+        color: Colors.grey.withOpacity(0.7),
+        borderColor: Colors.grey[800]!,
+        text: 'Unavailable',
+      );
+    }
 
-  String _getStatusText(
-      bool isAvailable, bool isDateAvailable, bool isDatePending) {
-    if (!isAvailable) return 'Unavailable';
-    if (isDatePending) return 'Pending';
-    if (!isDateAvailable) return 'Booked';
-    return 'Available';
+    if (isMyPending) {
+      return DisplayStatus(
+        color: Colors.orange.withOpacity(0.7),
+        borderColor: Colors.orange[800]!,
+        text: 'Your Request Pending',
+      );
+    }
+
+    if (isDatePending) {
+      return DisplayStatus(
+        color: Colors.red.withOpacity(0.7),
+        borderColor: Colors.red[800]!,
+        text: 'Booking Pending',
+      );
+    }
+
+    if (!isDateAvailable) {
+      return DisplayStatus(
+        color: Colors.red.withOpacity(0.7),
+        borderColor: Colors.red[800]!,
+        text: 'Booked',
+      );
+    }
+
+    return DisplayStatus(
+      color: Colors.green.withOpacity(0.7),
+      borderColor: Colors.green[800]!,
+      text: 'Available',
+    );
   }
+}
+
+class DisplayStatus {
+  final Color color;
+  final Color borderColor;
+  final String text;
+
+  const DisplayStatus({
+    required this.color,
+    required this.borderColor,
+    required this.text,
+  });
 }
 
 class GridPainter extends CustomPainter {
