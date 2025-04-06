@@ -5,6 +5,7 @@ import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_details_screen.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
 
 class MarketMapView extends StatefulWidget {
   const MarketMapView({Key? key}) : super(key: key);
@@ -398,12 +399,14 @@ class _MarketMapViewState extends State<MarketMapView> {
     final marketProvider = Provider.of<MarketProvider>(context, listen: false);
     final lot = marketProvider.lots[index];
 
-    TextEditingController nameController =
-        TextEditingController(text: lot['name']);
-    TextEditingController detailsController =
-        TextEditingController(text: lot['details']);
-    TextEditingController priceController =
+    final nameController = TextEditingController(text: lot['name']);
+    final detailsController = TextEditingController(text: lot['details']);
+    final priceController =
         TextEditingController(text: lot['price'].toString());
+    final widthController =
+        TextEditingController(text: lot['size'].width.toString());
+    final heightController =
+        TextEditingController(text: lot['size'].height.toString());
     bool isAvailable = lot['available'] ?? false;
 
     await showModalBottomSheet(
@@ -424,12 +427,11 @@ class _MarketMapViewState extends State<MarketMapView> {
                   BoxShadow(
                     color: Colors.black26,
                     blurRadius: 10,
-                    spreadRadius: 0,
                     offset: Offset(0, -5),
                   ),
                 ],
               ),
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -451,7 +453,6 @@ class _MarketMapViewState extends State<MarketMapView> {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Colors.black87,
                       ),
                     ),
                     SizedBox(height: 20),
@@ -478,28 +479,88 @@ class _MarketMapViewState extends State<MarketMapView> {
                       maxLines: 2,
                     ),
                     SizedBox(height: 16),
-                    TextField(
-                      controller: priceController,
-                      decoration: InputDecoration(
-                        labelText: 'Price',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: priceController,
+                            decoration: InputDecoration(
+                              labelText: 'Price',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              prefixIcon: Icon(Icons.attach_money),
+                            ),
+                            keyboardType:
+                                TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                  RegExp(r'^\d+\.?\d{0,2}')),
+                            ],
+                          ),
                         ),
-                        prefixIcon: Icon(Icons.attach_money),
-                      ),
-                      keyboardType: TextInputType.number,
+                      ],
                     ),
                     SizedBox(height: 16),
                     Row(
                       children: [
-                        Text('Available for rent:'),
+                        Expanded(
+                          child: TextField(
+                            controller: widthController,
+                            decoration: InputDecoration(
+                              labelText: 'Width (cm)',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              prefixIcon: Icon(Icons.width_normal),
+                              helperText: 'Min: 150cm',
+                              errorText:
+                                  (double.tryParse(widthController.text) ?? 0) <
+                                          150
+                                      ? 'Minimum 150cm'
+                                      : null,
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          child: TextField(
+                            controller: heightController,
+                            decoration: InputDecoration(
+                              labelText: 'Height (cm)',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              prefixIcon: Icon(Icons.height),
+                              helperText: 'Min: 150cm',
+                              errorText:
+                                  (double.tryParse(heightController.text) ??
+                                              0) <
+                                          150
+                                      ? 'Minimum 150cm'
+                                      : null,
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Text('Available for rent'),
+                        Spacer(),
                         Switch(
                           value: isAvailable,
-                          onChanged: (value) {
-                            setState(() {
-                              isAvailable = value;
-                            });
-                          },
+                          onChanged: (value) =>
+                              setState(() => isAvailable = value),
                           activeColor: Colors.green,
                         ),
                       ],
@@ -518,17 +579,62 @@ class _MarketMapViewState extends State<MarketMapView> {
                         SizedBox(width: 16),
                         ElevatedButton(
                           onPressed: () async {
-                            final success = await marketProvider.updateLot(
-                              index: index,
-                              name: nameController.text,
-                              details: detailsController.text,
-                              price: double.parse(priceController.text),
-                              available: isAvailable,
-                              context: context,
-                            );
+                            try {
+                              final width = double.parse(widthController.text);
+                              final height =
+                                  double.parse(heightController.text);
+                              final price = double.parse(priceController.text);
 
-                            if (success) {
-                              Navigator.pop(context);
+                              if (width < 150 || height < 150) {
+                                throw 'Minimum size is 150cm x 150cm';
+                              }
+
+                              if (price <= 0) {
+                                throw 'Price must be greater than 0';
+                              }
+
+                              final success = await marketProvider.updateLot(
+                                index: index,
+                                name: nameController.text,
+                                details: detailsController.text,
+                                price: price,
+                                available: isAvailable,
+                                size: Size(width, height),
+                                context: context,
+                              );
+
+                              if (success && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        Icon(Icons.check_circle,
+                                            color: Colors.white),
+                                        SizedBox(width: 8),
+                                        Text('Lot updated successfully'),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                                Navigator.pop(context);
+                              }
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Row(
+                                    children: [
+                                      Icon(Icons.error_outline,
+                                          color: Colors.white),
+                                      SizedBox(width: 8),
+                                      Expanded(child: Text(e.toString())),
+                                    ],
+                                  ),
+                                  backgroundColor: Colors.red,
+                                  behavior: SnackBarBehavior.floating,
+                                ),
+                              );
                             }
                           },
                           child: Text('Save Changes'),
@@ -552,6 +658,13 @@ class _MarketMapViewState extends State<MarketMapView> {
         );
       },
     );
+
+    // Dispose controllers
+    nameController.dispose();
+    detailsController.dispose();
+    priceController.dispose();
+    widthController.dispose();
+    heightController.dispose();
   }
 }
 
@@ -726,4 +839,130 @@ class GridPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
+}
+
+Future<Size?> showSizeSelectionDialog(BuildContext context) async {
+  final widthController = TextEditingController(text: '150');
+  final heightController = TextEditingController(text: '150');
+
+  try {
+    return await showDialog<Size>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.square_foot, color: Colors.green),
+              SizedBox(width: 8),
+              Text('Set Lot Size'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: widthController,
+                      decoration: InputDecoration(
+                        labelText: 'Width (cm)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: Icon(Icons.width_normal),
+                        helperText: 'Min: 150cm',
+                        errorText:
+                            (double.tryParse(widthController.text) ?? 0) < 150
+                                ? 'Minimum 150cm'
+                                : null,
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                  ),
+                  SizedBox(width: 16),
+                  Expanded(
+                    child: TextField(
+                      controller: heightController,
+                      decoration: InputDecoration(
+                        labelText: 'Height (cm)',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        prefixIcon: Icon(Icons.height),
+                        helperText: 'Min: 150cm',
+                        errorText:
+                            (double.tryParse(heightController.text) ?? 0) < 150
+                                ? 'Minimum 150cm'
+                                : null,
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel'),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[600],
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                try {
+                  final width = double.parse(widthController.text);
+                  final height = double.parse(heightController.text);
+
+                  if (width < 150 || height < 150) {
+                    throw 'Minimum size is 150cm x 150cm';
+                  }
+
+                  Navigator.pop(context, Size(width, height));
+                } catch (e) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.error_outline, color: Colors.white),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(e is String
+                                ? e
+                                : 'Please enter valid dimensions'),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: Colors.red,
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              },
+              child: Text('Confirm'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        );
+      },
+    );
+  } finally {
+    widthController.dispose();
+    heightController.dispose();
+  }
 }

@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
+import 'dart:math';
 
 class MarketProvider with ChangeNotifier {
   List<Map<String, dynamic>> _lots = [];
@@ -119,152 +120,279 @@ class MarketProvider with ChangeNotifier {
   }
 
   // Add new lot
-  Future<void> addLot(BuildContext context) async {
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    final url = Uri.parse('http://localhost:3002/lots');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-
-    // Generate a random x,y position within visible bounds
-    final screenSize = MediaQuery.of(context).size;
-    final randomX = (screenSize.width / 2) *
-        (0.2 + 0.6 * (DateTime.now().millisecond / 999));
-    final randomY = (screenSize.height / 2) *
-        (0.2 + 0.6 * (DateTime.now().microsecond / 999));
-
-    final newLot = {
-      'name': 'New Lot',
-      'details': 'Custom lot',
-      'price': 100,
-      'available': true,
-      'shape': {
-        'width': 100,
-        'height': 100,
-      },
-      'position': {
-        'x': randomX,
-        'y': randomY,
-      },
-      'marketId': _marketId,
-    };
-
+  Future<void> addLot(BuildContext context, {Size? initialSize}) async {
     try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getToken();
+
+      if (token == null) {
+        throw Exception('No token found. Please log in.');
+      }
+
+      final size = initialSize ?? const Size(100, 100);
+      final screenSize = MediaQuery.of(context).size;
+
+      // Generate random position within visible bounds with padding
+      final padding = 20.0;
+      final randomX = padding +
+          (screenSize.width - size.width - 2 * padding) * Random().nextDouble();
+      final randomY = padding +
+          (screenSize.height - size.height - 2 * padding) *
+              Random().nextDouble();
+
+      final newLot = {
+        'name': 'New Lot',
+        'details': 'Custom lot',
+        'price': 100.0,
+        'available': true,
+        'shape': {
+          'width': size.width,
+          'height': size.height,
+        },
+        'position': {
+          'x': randomX,
+          'y': randomY,
+        },
+        'marketId': _marketId,
+      };
+
       final response = await http.post(
-        url,
-        headers: headers,
+        Uri.parse('http://localhost:3002/lots'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
         body: json.encode(newLot),
       );
 
-      if (response.statusCode == 201) {
-        final Map<String, dynamic> responseData = json.decode(response.body);
-        final String lotId = responseData['id'];
+      if (response.statusCode != 201) {
+        throw Exception(
+            'Server returned ${response.statusCode}: ${response.body}');
+      }
 
-        _lots.add({
-          'id': lotId,
-          'name': newLot['name'],
-          'details': newLot['details'],
-          'price': newLot['price'],
-          'available': newLot['available'],
-          'position': Offset(randomX, randomY),
-          'size': Size(100, 100),
-        });
+      final responseData = json.decode(response.body);
 
-        notifyListeners();
+      // Add new lot to local state
+      _lots.add({
+        'id': responseData['id'],
+        'name': newLot['name'],
+        'details': newLot['details'],
+        'price': newLot['price'],
+        'available': newLot['available'],
+        'position': Offset(randomX, randomY),
+        'size': size,
+        'marketId': _marketId,
+      });
 
+      notifyListeners();
+
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lot added successfully!'),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Lot added successfully!'),
+              ],
+            ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
           ),
         );
-      } else {
-        throw Exception('Failed to add lot: ${response.body}');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to add lot: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      print('Error adding lot: $e'); // For debugging
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to add lot: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
   // Save lot position
   Future<void> saveLotPosition(
       BuildContext context, Map<String, dynamic> lot) async {
-    if (lot['id'].toString().startsWith('new-lot')) {
-      return;
-    }
-
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final token = await authProvider.getToken();
-
-    if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No token found. Please log in.')),
-      );
-      return;
-    }
-
-    final url = Uri.parse('http://localhost:3002/lots/${lot['id']}');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
+    if (lot['id'].toString().startsWith('new-lot')) return;
 
     try {
-      final body = json.encode({
-        'name': lot['name'],
-        'details': lot['details'],
-        'price': lot['price'],
-        'available': lot['available'] ?? false,
-        'shape': {
-          'width': lot['size'].width,
-          'height': lot['size'].height,
-        },
-        'position': {
-          'x': lot['position'].dx,
-          'y': lot['position'].dy,
-        },
-        'marketId': _marketId,
-      });
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getToken();
 
-      final response = await http.put(url, headers: headers, body: body);
+      if (token == null) {
+        throw Exception('Authentication required');
+      }
 
-      if (response.statusCode == 200) {
+      final response = await http.put(
+        Uri.parse('http://localhost:3002/lots/${lot['id']}'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': lot['name'],
+          'details': lot['details'],
+          'price': lot['price'],
+          'available': lot['available'] ?? false,
+          'shape': {
+            'width': lot['size'].width,
+            'height': lot['size'].height,
+          },
+          'position': {
+            'x': lot['position'].dx,
+            'y': lot['position'].dy,
+          },
+          'marketId': _marketId,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'Server returned ${response.statusCode}: ${response.body}');
+      }
+
+      // Update local state
+      final index = _lots.indexWhere((l) => l['id'] == lot['id']);
+      if (index != -1) {
+        _lots[index] = lot;
+        notifyListeners();
+      }
+
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lot position saved'),
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Position saved'),
+              ],
+            ),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating,
             duration: Duration(seconds: 1),
           ),
         );
-      } else {
-        throw Exception('Failed to save lot: ${response.body}');
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to save lot: $e'),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-        ),
+      print('Error saving lot position: $e'); // For debugging
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to save position: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> updateLotSize(
+      BuildContext context, String lotId, Size newSize) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final token = await authProvider.getToken();
+
+      if (token == null) {
+        throw Exception('Authentication required');
+      }
+
+      final lotIndex = _lots.indexWhere((lot) => lot['id'] == lotId);
+      if (lotIndex == -1) throw Exception('Lot not found');
+
+      final lot = _lots[lotIndex];
+      final position = lot['position'] as Offset;
+
+      final response = await http.put(
+        Uri.parse('http://localhost:3002/lots/$lotId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': lot['name'],
+          'details': lot['details'],
+          'price': lot['price'],
+          'available': lot['available'] ?? false,
+          'shape': {
+            'width': newSize.width,
+            'height': newSize.height,
+          },
+          'position': {
+            'x': position.dx,
+            'y': position.dy,
+          },
+          'marketId': _marketId,
+        }),
       );
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'Server returned ${response.statusCode}: ${response.body}');
+      }
+
+      // Update local state
+      _lots[lotIndex] = {
+        ..._lots[lotIndex],
+        'size': newSize,
+      };
+      notifyListeners();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('Size updated'),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error updating lot size: $e'); // For debugging
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to update size: $e')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
     }
   }
 
@@ -275,26 +403,57 @@ class MarketProvider with ChangeNotifier {
     required String details,
     required double price,
     required bool available,
+    required Size size, // Add size parameter
     required BuildContext context,
   }) async {
     try {
+      final lot = _lots[index];
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      await authProvider.updateLot(
-        marketId: _marketId,
-        lotId: _lots[index]['id'],
-        name: name,
-        details: details,
-        price: price,
-        available: available,
-        size: _lots[index]['size'],
-        position: _lots[index]['position'],
+
+      // Send update request to server
+      final url = Uri.parse('http://localhost:3002/lots/${lot['id']}');
+      final token = await authProvider.getToken();
+
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final response = await http.put(
+        url,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': name,
+          'details': details,
+          'price': price,
+          'available': available,
+          'shape': {
+            'width': size.width,
+            'height': size.height,
+          },
+          'position': {
+            'x': lot['position'].dx,
+            'y': lot['position'].dy,
+          },
+          'marketId': _marketId,
+        }),
       );
 
+      if (response.statusCode != 200) {
+        throw Exception('Server returned ${response.statusCode}');
+      }
+
       // Update local data
-      _lots[index]['name'] = name;
-      _lots[index]['details'] = details;
-      _lots[index]['price'] = price;
-      _lots[index]['available'] = available;
+      _lots[index] = {
+        ..._lots[index],
+        'name': name,
+        'details': details,
+        'price': price,
+        'available': available,
+        'size': size,
+      };
 
       notifyListeners();
 
@@ -303,16 +462,19 @@ class MarketProvider with ChangeNotifier {
           content: Text('Lot updated successfully'),
           backgroundColor: Colors.green,
           behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 2),
         ),
       );
 
       return true;
     } catch (e) {
+      print('Error updating lot: $e'); // For debugging
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to update lot: $e'),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 3),
         ),
       );
       return false;
