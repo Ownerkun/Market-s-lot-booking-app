@@ -600,11 +600,11 @@ class _MarketMapViewState extends State<MarketMapView> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               prefixIcon: Icon(Icons.width_normal),
-                              helperText: 'Min: 150cm',
+                              helperText: 'Min: 100cm',
                               errorText:
                                   (double.tryParse(widthController.text) ?? 0) <
-                                          150
-                                      ? 'Minimum 150cm'
+                                          100
+                                      ? 'Minimum 100cm'
                                       : null,
                             ),
                             keyboardType: TextInputType.number,
@@ -623,12 +623,12 @@ class _MarketMapViewState extends State<MarketMapView> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               prefixIcon: Icon(Icons.height),
-                              helperText: 'Min: 150cm',
+                              helperText: 'Min: 100cm',
                               errorText:
                                   (double.tryParse(heightController.text) ??
                                               0) <
-                                          150
-                                      ? 'Minimum 150cm'
+                                          100
+                                      ? 'Minimum 100cm'
                                       : null,
                             ),
                             keyboardType: TextInputType.number,
@@ -672,8 +672,8 @@ class _MarketMapViewState extends State<MarketMapView> {
                                   double.parse(heightController.text);
                               final price = double.parse(priceController.text);
 
-                              if (width < 150 || height < 150) {
-                                throw 'Minimum size is 150cm x 150cm';
+                              if (width < 100 || height < 100) {
+                                throw 'Minimum size is 100cm x 100cm';
                               }
 
                               if (price <= 0) {
@@ -994,8 +994,8 @@ class GridPainter extends CustomPainter {
 }
 
 Future<Size?> showSizeSelectionDialog(BuildContext context) async {
-  final widthController = TextEditingController(text: '150');
-  final heightController = TextEditingController(text: '150');
+  final widthController = TextEditingController(text: '100');
+  final heightController = TextEditingController(text: '100');
 
   try {
     return await showDialog<Size>(
@@ -1023,10 +1023,10 @@ Future<Size?> showSizeSelectionDialog(BuildContext context) async {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         prefixIcon: Icon(Icons.width_normal),
-                        helperText: 'Min: 150cm',
+                        helperText: 'Min: 100cm',
                         errorText:
-                            (double.tryParse(widthController.text) ?? 0) < 150
-                                ? 'Minimum 150cm'
+                            (double.tryParse(widthController.text) ?? 0) < 100
+                                ? 'Minimum 100cm'
                                 : null,
                       ),
                       keyboardType: TextInputType.number,
@@ -1043,10 +1043,10 @@ Future<Size?> showSizeSelectionDialog(BuildContext context) async {
                           borderRadius: BorderRadius.circular(12),
                         ),
                         prefixIcon: Icon(Icons.height),
-                        helperText: 'Min: 150cm',
+                        helperText: 'Min: 100cm',
                         errorText:
-                            (double.tryParse(heightController.text) ?? 0) < 150
-                                ? 'Minimum 150cm'
+                            (double.tryParse(heightController.text) ?? 0) < 100
+                                ? 'Minimum 100cm'
                                 : null,
                       ),
                       keyboardType: TextInputType.number,
@@ -1071,8 +1071,8 @@ Future<Size?> showSizeSelectionDialog(BuildContext context) async {
                   final width = double.parse(widthController.text);
                   final height = double.parse(heightController.text);
 
-                  if (width < 150 || height < 150) {
-                    throw 'Minimum size is 150cm x 150cm';
+                  if (width < 100 || height < 100) {
+                    throw 'Minimum size is 100cm x 100cm';
                   }
 
                   Navigator.pop(context, Size(width, height));
