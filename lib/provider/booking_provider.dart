@@ -239,6 +239,11 @@ class BookingProvider with ChangeNotifier {
     };
 
     try {
+      // Determine if it's a single day booking
+      final bool isOneDay = startDate.year == endDate.year &&
+          startDate.month == endDate.month &&
+          startDate.day == endDate.day;
+
       final formattedStartDate = DateTime.utc(
         startDate.year,
         startDate.month,
@@ -260,6 +265,7 @@ class BookingProvider with ChangeNotifier {
           'lotId': lotId,
           'startDate': formattedStartDate,
           'endDate': formattedEndDate,
+          'isOneDay': isOneDay,
         }),
       );
 

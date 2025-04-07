@@ -30,13 +30,17 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   late BookingProvider _bookingProvider;
   bool _isLoading = false;
   DateTimeRange? _selectedDateRange;
+  DateTime? _rangeStart;
+  DateTime? _rangeEnd;
 
   @override
   void initState() {
     super.initState();
-    _selectedDay = DateTime.now();
-    _focusedDay = DateTime.now();
-    _selectedDateRange = null; // Initialize selected range as null
+    _selectedDay = widget.selectedDate;
+    _focusedDay = widget.selectedDate;
+    _selectedDateRange = null;
+    _rangeStart = null;
+    _rangeEnd = null;
 
     _bookingProvider = Provider.of<BookingProvider>(context, listen: false);
 
@@ -46,59 +50,74 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   }
 
   Future<void> _loadBookedDates(DateTime month) async {
-    setState(() {
-      _isLoading = true;
-    });
+    if (_isLoading) return;
 
-    await _bookingProvider.loadBookedDatesForLot(widget.lot['id'], month);
-
-    setState(() {
-      _isLoading = false;
-    });
-  }
-
-  bool _isDateAvailable(DateTime day) {
-    return _bookingProvider.isDateAvailable(widget.lot['id'], day);
-  }
-
-  bool _isDatePending(DateTime day) {
-    return _bookingProvider.isDatePending(widget.lot['id'], day);
-  }
-
-  bool _isDateRangeAvailable(DateTime start, DateTime end) {
-    DateTime current = start;
-    while (current.isBefore(end) || current.isAtSameMomentAs(end)) {
-      if (!_isDateAvailable(current) || _isDatePending(current)) {
-        return false;
+    try {
+      setState(() => _isLoading = true);
+      await _bookingProvider.loadBookedDatesForLot(widget.lot['id'], month);
+    } catch (e) {
+      print('Error loading booked dates: $e');
+      _showErrorMessage('Failed to load availability');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
-      current = current.add(Duration(days: 1));
     }
-    return true;
   }
 
-  void _onDaySelected(DateTime selectedDay, DateTime focusedDay) {
-    if (!isSameDay(_selectedDay, selectedDay)) {
-      if (!_isDateAvailable(selectedDay)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('This date is already booked'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      } else if (_isDatePending(selectedDay)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('This date has a pending booking'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+  void _showErrorMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.white),
+            SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  void _handleRangeSelection(
+      DateTime? start, DateTime? end, DateTime focusedDay) {
+    setState(() {
+      _rangeStart = start;
+      _rangeEnd = end;
+      _focusedDay = focusedDay;
+
+      if (start != null) {
+        // Handle both single-day and range selections
+        if (end == null || start == end) {
+          // Single day selection
+          if (_isDateAvailable(start)) {
+            _selectedDateRange = DateTimeRange(start: start, end: start);
+            _selectedDay = start;
+          } else {
+            _showErrorMessage('This date is not available');
+            _selectedDateRange = null;
+            _rangeStart = null;
+            _rangeEnd = null;
+          }
+        } else {
+          // Range selection
+          if (_isDateRangeAvailable(start, end)) {
+            _selectedDateRange = DateTimeRange(start: start, end: end);
+            _selectedDay = start;
+          } else {
+            _showErrorMessage('Some dates in this range are not available');
+            _selectedDateRange = null;
+            _rangeStart = null;
+            _rangeEnd = null;
+          }
+        }
       } else {
-        setState(() {
-          _selectedDay = selectedDay;
-          _focusedDay = focusedDay;
-        });
+        _selectedDateRange = null;
       }
-    }
+    });
   }
 
   Future<void> _bookLot(DateTimeRange dateRange) async {
@@ -190,7 +209,11 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   }
 
   Future<void> _showBookingConfirmation(DateTimeRange dateRange) async {
-    final duration = dateRange.end.difference(dateRange.start).inDays + 1;
+    final bool isOneDay = dateRange.start.year == dateRange.end.year &&
+        dateRange.start.month == dateRange.end.month &&
+        dateRange.start.day == dateRange.end.day;
+
+    final duration = isOneDay ? 1 : dateRange.duration.inDays + 1;
     final totalPrice = widget.lot['price'] * duration;
 
     return showDialog<void>(
@@ -298,6 +321,100 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
     // When calendar page changes, load booked dates for the new month
     _focusedDay = focusedDay;
     _loadBookedDates(focusedDay);
+  }
+
+  // Add these helper methods for date availability checking
+  bool _isDateAvailable(DateTime day) {
+    if (!widget.lot['available']) return false;
+
+    final normalizedDate = DateTime(day.year, day.month, day.day);
+    return _bookingProvider.isDateAvailable(widget.lot['id'], normalizedDate) &&
+        normalizedDate.isAfter(DateTime.now().subtract(Duration(days: 1)));
+  }
+
+  bool _isDatePending(DateTime day) {
+    final normalizedDate = DateTime(day.year, day.month, day.day);
+    return _bookingProvider.isDatePending(widget.lot['id'], normalizedDate);
+  }
+
+  bool _isDateRangeAvailable(DateTime start, DateTime end) {
+    if (!widget.lot['available']) return false;
+
+    DateTime current = start;
+    while (!current.isAfter(end)) {
+      if (!_isDateAvailable(current) || _isDatePending(current)) {
+        return false;
+      }
+      current = current.add(Duration(days: 1));
+    }
+    return true;
+  }
+
+  Widget _buildDateMarker(
+      BuildContext context, DateTime date, List<dynamic> events) {
+    if (!_isDateAvailable(date)) {
+      return _buildMarker(Colors.red);
+    }
+    if (_isDatePending(date)) {
+      return _buildMarker(Colors.orange);
+    }
+    return SizedBox.shrink();
+  }
+
+  Widget _buildMarker(Color color) {
+    return Positioned(
+      right: 1,
+      bottom: 1,
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  // Update the TableCalendar configuration to use these methods
+  Widget _buildCalendar() {
+    return Consumer<BookingProvider>(
+      builder: (context, bookingProvider, child) {
+        return TableCalendar(
+          firstDay: DateTime.now(),
+          lastDay: DateTime.now().add(Duration(days: 365)),
+          focusedDay: _focusedDay,
+          rangeStartDay: _rangeStart,
+          rangeEndDay: _rangeEnd,
+          calendarFormat: CalendarFormat.month,
+          rangeSelectionMode: RangeSelectionMode.enforced,
+          onPageChanged: _loadBookedDates,
+          onRangeSelected: _handleRangeSelection,
+          enabledDayPredicate: _isDateAvailable,
+          calendarStyle: CalendarStyle(
+            todayDecoration: BoxDecoration(
+              color: Colors.blue.withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            rangeStartDecoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+            rangeEndDecoration: BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+            withinRangeTextStyle: TextStyle(
+              color: Colors.black,
+            ),
+            rangeHighlightColor: Colors.green.withOpacity(0.1),
+          ),
+          calendarBuilders: CalendarBuilders(
+            markerBuilder: _buildDateMarker,
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -476,134 +593,9 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                         _buildInfoCard(
                           child: Column(
                             children: [
-                              Consumer<BookingProvider>(
-                                builder: (context, bookingProvider, child) {
-                                  return TableCalendar(
-                                    firstDay: DateTime.now(),
-                                    lastDay:
-                                        DateTime.now().add(Duration(days: 365)),
-                                    focusedDay: _focusedDay,
-                                    selectedDayPredicate: (day) =>
-                                        isSameDay(_selectedDay, day),
-                                    rangeStartDay: _selectedDateRange?.start,
-                                    rangeEndDay: _selectedDateRange?.end,
-                                    calendarFormat: CalendarFormat.month,
-                                    rangeSelectionMode:
-                                        RangeSelectionMode.toggledOn,
-                                    onRangeSelected: (start, end, focusedDay) {
-                                      if (start == null || end == null) return;
-
-                                      final isRangeAvailable =
-                                          _isDateRangeAvailable(start, end);
-
-                                      if (!isRangeAvailable) {
-                                        ScaffoldMessenger.of(context)
-                                            .showSnackBar(
-                                          SnackBar(
-                                            content: Text(
-                                                'Some dates in this range are not available'),
-                                            backgroundColor: Colors.red,
-                                          ),
-                                        );
-                                      } else {
-                                        setState(() {
-                                          _selectedDateRange = DateTimeRange(
-                                              start: start, end: end);
-                                          _focusedDay = focusedDay;
-                                        });
-                                      }
-                                    },
-                                    calendarStyle: CalendarStyle(
-                                      todayDecoration: BoxDecoration(
-                                        color: Colors.blue.withOpacity(0.5),
-                                        shape: BoxShape.circle,
-                                      ),
-                                      selectedDecoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      rangeStartDecoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      rangeEndDecoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      withinRangeTextStyle: TextStyle(
-                                        color: Colors.white,
-                                      ),
-                                      rangeHighlightColor:
-                                          Colors.green.withOpacity(0.2),
-                                      disabledTextStyle: TextStyle(
-                                        color: Colors.grey,
-                                        decoration: TextDecoration.lineThrough,
-                                      ),
-                                    ),
-                                    enabledDayPredicate: (day) {
-                                      return _isDateAvailable(day) &&
-                                          !_isDatePending(day) &&
-                                          day.isAfter(DateTime.now()
-                                              .subtract(Duration(days: 1)));
-                                    },
-                                    calendarBuilders: CalendarBuilders(
-                                      markerBuilder: (context, date, events) {
-                                        if (!_isDateAvailable(date)) {
-                                          return Positioned(
-                                            right: 1,
-                                            bottom: 1,
-                                            child: Container(
-                                              width: 8,
-                                              height: 8,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: Colors.red,
-                                              ),
-                                            ),
-                                          );
-                                        } else if (_isDatePending(date)) {
-                                          return Positioned(
-                                            right: 1,
-                                            bottom: 1,
-                                            child: Container(
-                                              width: 8,
-                                              height: 8,
-                                              decoration: BoxDecoration(
-                                                shape: BoxShape.circle,
-                                                color: Colors.orange,
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                        return null;
-                                      },
-                                    ),
-                                  );
-                                },
-                              ),
-                              Padding(
-                                padding: EdgeInsets.symmetric(
-                                    horizontal: 16, vertical: 8),
-                                child: Row(
-                                  children: [
-                                    _buildLegendItem(Colors.green, 'Selected'),
-                                    SizedBox(width: 16),
-                                    _buildLegendItem(Colors.red, 'Booked'),
-                                    SizedBox(width: 16),
-                                    _buildLegendItem(Colors.orange, 'Pending'),
-                                  ],
-                                ),
-                              ),
-                              Padding(
-                                padding: EdgeInsets.all(8),
-                                child: Text(
-                                  'Selected date: ${DateFormat('MMMM d, yyyy').format(_selectedDay)}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ),
+                              _buildCalendar(),
+                              _buildCalendarLegend(),
+                              _buildSelectedDateRange(),
                             ],
                           ),
                         ),
@@ -614,48 +606,33 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black12,
-              blurRadius: 10,
-              offset: Offset(0, -5),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: ElevatedButton(
-            onPressed: (_selectedDateRange != null &&
-                    widget.lot['available'] &&
-                    !widget.isLandlord &&
-                    !_isLoading)
-                ? () => _showBookingConfirmation(_selectedDateRange!)
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              disabledBackgroundColor: Colors.grey[300],
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              elevation: 0,
-            ),
-            child: _isLoading
-                ? CircularProgressIndicator(color: Colors.white)
-                : Text(
-                    _selectedDateRange != null
-                        ? 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
-                        : 'Select dates to book',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
+      bottomNavigationBar: _buildBookingButton(),
+    );
+  }
+
+  Widget _buildCalendarLegend() {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          _buildLegendItem(Colors.green, 'Selected'),
+          SizedBox(width: 16),
+          _buildLegendItem(Colors.red, 'Booked'),
+          SizedBox(width: 16),
+          _buildLegendItem(Colors.orange, 'Pending'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectedDateRange() {
+    return Padding(
+      padding: EdgeInsets.all(8),
+      child: Text(
+        'Selected date: ${DateFormat('MMMM d, yyyy').format(_selectedDay)}',
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          fontSize: 16,
         ),
       ),
     );
@@ -842,6 +819,124 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBookingButton() {
+    final bool canBook = _selectedDateRange != null &&
+        widget.lot['available'] &&
+        !widget.isLandlord &&
+        !_isLoading;
+
+    // Calculate total price considering one-day bookings
+    final num totalPrice = _selectedDateRange != null
+        ? (_selectedDateRange!.start.year == _selectedDateRange!.end.year &&
+                _selectedDateRange!.start.month ==
+                    _selectedDateRange!.end.month &&
+                _selectedDateRange!.start.day == _selectedDateRange!.end.day
+            ? widget.lot['price'] // Single day price
+            : (_selectedDateRange!.duration.inDays + 1) * widget.lot['price'])
+        : 0.0;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 15,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (_selectedDateRange != null)
+              Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Total Price:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      '\$${totalPrice.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ElevatedButton(
+              onPressed: canBook
+                  ? () => _showBookingConfirmation(_selectedDateRange!)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                disabledBackgroundColor: Colors.grey[300],
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: canBook ? 2 : 0,
+              ),
+              child: _isLoading
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Processing...',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.calendar_today),
+                        SizedBox(width: 12),
+                        Text(
+                          _selectedDateRange != null
+                              ? _selectedDateRange!.start ==
+                                      _selectedDateRange!.end
+                                  ? 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)}'
+                                  : 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
+                              : 'Select dates to book',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
