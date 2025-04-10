@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'dart:convert';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
@@ -50,6 +51,7 @@ class MarketProvider with ChangeNotifier {
     try {
       final response = await http.get(url, headers: headers);
 
+      // print('Market info response: ${response.body}'); //Debugging
       if (response.statusCode == 200) {
         _marketInfo = json.decode(response.body);
         notifyListeners();
@@ -766,6 +768,118 @@ class MarketProvider with ChangeNotifier {
     } catch (e) {
       print('Error loading bookings: $e');
       _bookings[lotId] = [];
+      rethrow;
+    }
+  }
+
+  void setState(Function fn) {
+    fn();
+    notifyListeners();
+  }
+
+  Future<void> createMarket({
+    required String name,
+    required String location,
+    required LatLng position,
+    required List<String> tagIds,
+    required BuildContext context,
+  }) async {
+    setState(() => _isLoading = true);
+
+    try {
+      final token = await _authProvider.getToken();
+      if (token == null) throw Exception('No token found. Please log in.');
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3002/markets'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': name,
+          'location': location,
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'tagIds': tagIds,
+        }),
+      );
+
+      if (response.statusCode != 201) {
+        final error =
+            json.decode(response.body)['message'] ?? 'Failed to create market';
+        throw Exception(error);
+      }
+
+      await _authProvider.fetchMarkets();
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Market created successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to create market: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      rethrow;
+    } finally {
+      if (context.mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> fetchMarketTags() async {
+    try {
+      final token = await _authProvider.getToken();
+      final response = await http.get(
+        Uri.parse('http://localhost:3002/market-tags'),
+        headers: {
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      }
+      return [];
+    } catch (e) {
+      print('Error fetching tags: $e');
+      return [];
+    }
+  }
+
+  Future<void> createTag(String tagName) async {
+    try {
+      final token = await _authProvider.getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final response = await http.post(
+        Uri.parse('http://localhost:3002/market-tags'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'name': tagName,
+        }),
+      );
+
+      if (response.statusCode != 201) {
+        throw Exception('Failed to create tag');
+      }
+    } catch (e) {
+      print('Error creating tag: $e');
       rethrow;
     }
   }

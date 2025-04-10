@@ -181,34 +181,35 @@ class AuthProvider with ChangeNotifier {
 
   // Fetch Markets Method
 
-  List<dynamic> _markets = [];
-  List<dynamic> get markets => _markets;
+  List<Map<String, dynamic>> _markets = [];
+  List<Map<String, dynamic>> get markets => _markets;
 
   Future<void> fetchMarkets() async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // Read the encrypted token from SharedPreferences
       final encryptedToken = _prefs.getString('token');
       if (encryptedToken == null) {
         _errorMessage = 'No token found. Please log in.';
         return;
       }
 
-      // Decrypt the token
       final token = _decrypt(encryptedToken);
-
-      // Fetch markets from the API
       final response = await http.get(
         Uri.parse('$_baseMarketUrl'),
         headers: {'Authorization': 'Bearer $token'},
       );
 
-      // print('Markets response: ${response.body}'); // Debugging
+      print('Markets response: ${response.body}'); // Debugging
 
       if (response.statusCode == 200) {
-        _markets = json.decode(response.body);
+        final dynamic responseData = json.decode(response.body);
+        if (responseData is List) {
+          _markets = responseData.cast<Map<String, dynamic>>();
+        } else {
+          _markets = [];
+        }
         _errorMessage = null;
       } else {
         _errorMessage = 'Failed to fetch markets.';

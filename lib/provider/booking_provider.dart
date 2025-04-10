@@ -54,7 +54,7 @@ class BookingProvider with ChangeNotifier {
           ? Uri.parse('$_baseUrl/landlord?marketId=$marketId')
           : Uri.parse('$_baseUrl/landlord');
 
-      print('Fetching bookings from: ${url.toString()}'); // Debug URL
+      // print('Fetching bookings from: ${url.toString()}'); // Debug URL
 
       final response = await http.get(
         url,
@@ -64,12 +64,12 @@ class BookingProvider with ChangeNotifier {
         },
       );
 
-      print('Response status: ${response.statusCode}'); // Debug status code
+      // print('Response status: ${response.statusCode}'); // Debug status code
 
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
-        print(
-            'Raw response: ${json.encode(responseBody)}'); // Debug raw response
+        // print(
+        //     'Raw response: ${json.encode(responseBody)}'); // Debug raw response
 
         if (responseBody is! List) {
           throw Exception(

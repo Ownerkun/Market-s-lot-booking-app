@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/auth_screen/auth_screen.dart';
 import 'package:market_lot_app/screen/main_navigation_screen.dart';
+import 'package:market_lot_app/provider/market_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +21,9 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider(prefs, encrypter)),
+        ChangeNotifierProvider(
+            create: (context) => MarketProvider('initial_market_id',
+                Provider.of<AuthProvider>(context, listen: false))),
         ChangeNotifierProxyProvider<AuthProvider, BookingProvider>(
           create: (context) => BookingProvider(
             Provider.of<AuthProvider>(context, listen: false),

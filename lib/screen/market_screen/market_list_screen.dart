@@ -308,6 +308,14 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
 
   @override
   Widget build(BuildContext context) {
+    print('Market data: ${widget.market}'); // Debug print
+    final tags = widget.market['tags'] != null
+        ? (widget.market['tags'] as List)
+            .map((t) => t['name'] as String)
+            .toList()
+        : <String>[];
+    print('Extracted tags: $tags'); // Debug print
+
     return AnimatedBuilder(
       animation: _animationController,
       builder: (context, child) {
@@ -381,16 +389,46 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
                           ),
                         ),
                         SizedBox(height: 8),
+                        if (tags.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4.0),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: tags
+                                  .map((tag) => Container(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.green[50],
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                          border: Border.all(
+                                              color: Colors.green[100]!),
+                                        ),
+                                        child: Text(
+                                          tag,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.green[800],
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ))
+                                  .toList(),
+                            ),
+                          ),
+                        SizedBox(height: 8),
                         Row(
                           children: [
                             Icon(
-                              Icons.category,
+                              Icons.location_on,
                               size: 16,
                               color: Colors.grey[600],
                             ),
                             SizedBox(width: 4),
                             Text(
-                              widget.market['type'] ?? 'Market Type',
+                              widget.market['location'] ?? 'Location',
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[600],
