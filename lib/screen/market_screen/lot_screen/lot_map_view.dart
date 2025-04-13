@@ -29,18 +29,28 @@ class _MarketMapViewState extends State<MarketMapView> {
   // Add date selection state
   DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
     _selectedDate = DateTime.now();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadInitialData(context);
+      if (!_isDisposed) {
+        _loadInitialData(context);
+      }
     });
+  }
+
+  @override
+  void dispose() {
+    _isDisposed = true;
+    super.dispose();
   }
 
   Future<void> _loadInitialData(BuildContext context) async {
     try {
+      if (_isDisposed) return;
       setState(() => _isLoading = true);
 
       final marketProvider =
@@ -50,21 +60,26 @@ class _MarketMapViewState extends State<MarketMapView> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
       // Load lots if needed
-      if (marketProvider.lots.isEmpty) {
+      if (!marketProvider.lotsFetched) {
         await marketProvider.fetchLots(context);
       }
 
-      // Load bookings for all lots
-      await _refreshAvailability(context);
+      // Only load bookings if we have lots
+      if (!_isDisposed && marketProvider.lots.isNotEmpty) {
+        await _refreshAvailability(context);
+      }
 
       // Load tenant bookings if applicable
-      if (authProvider.userRole == 'TENANT') {
+      if (!_isDisposed && authProvider.userRole == 'TENANT') {
         await bookingProvider.fetchTenantBookings();
       }
     } catch (e) {
+      if (_isDisposed) return;
       print('Error loading initial data: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+
+      final scaffold = ScaffoldMessenger.maybeOf(context);
+      if (scaffold != null) {
+        scaffold.showSnackBar(
           SnackBar(
             content: Row(
               children: [
@@ -79,7 +94,59 @@ class _MarketMapViewState extends State<MarketMapView> {
         );
       }
     } finally {
+      if (!_isDisposed) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _refreshAvailability(BuildContext context) async {
+    try {
+      if (_isDisposed) return;
+      setState(() => _isLoading = true);
+
+      final bookingProvider =
+          Provider.of<BookingProvider>(context, listen: false);
+      final marketProvider =
+          Provider.of<MarketProvider>(context, listen: false);
+
+      // Only proceed if we have lots
+      if (!_isDisposed && marketProvider.lots.isNotEmpty) {
+        // Load availability for all lots concurrently
+        await Future.wait(
+          marketProvider.lots
+              .map((lot) => bookingProvider.loadBookedDatesForLot(
+                    lot['id'],
+                    _selectedDate,
+                  )),
+        );
+      }
+
       if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      if (_isDisposed) return;
+      print('Error refreshing availability: $e');
+
+      final scaffold = ScaffoldMessenger.maybeOf(context);
+      if (scaffold != null) {
+        scaffold.showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 8),
+                Expanded(child: Text('Failed to load availability')),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (!_isDisposed) {
         setState(() => _isLoading = false);
       }
     }
@@ -92,6 +159,16 @@ class _MarketMapViewState extends State<MarketMapView> {
         final lots = marketProvider.lots;
         final authProvider = Provider.of<AuthProvider>(context);
         final isLandlord = authProvider.userRole == 'LANDLORD';
+
+        // Early return for loading state
+        if (_isLoading) {
+          return Center(child: CircularProgressIndicator());
+        }
+
+        // Early return for empty state
+        if (lots.isEmpty) {
+          return _buildEmptyView(context, isLandlord);
+        }
 
         return GestureDetector(
           onScaleStart: (details) {
@@ -200,50 +277,6 @@ class _MarketMapViewState extends State<MarketMapView> {
       });
       // Refresh availability for the selected date
       await _refreshAvailability(context);
-    }
-  }
-
-  Future<void> _refreshAvailability(BuildContext context) async {
-    try {
-      setState(() => _isLoading = true);
-
-      final bookingProvider =
-          Provider.of<BookingProvider>(context, listen: false);
-      final marketProvider =
-          Provider.of<MarketProvider>(context, listen: false);
-
-      // Load availability for all lots concurrently
-      await Future.wait(
-        marketProvider.lots.map((lot) => bookingProvider.loadBookedDatesForLot(
-              lot['id'],
-              _selectedDate,
-            )),
-      );
-
-      if (mounted) {
-        setState(() {});
-      }
-    } catch (e) {
-      print('Error refreshing availability: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.white),
-                SizedBox(width: 8),
-                Expanded(child: Text('Failed to load availability')),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
     }
   }
 

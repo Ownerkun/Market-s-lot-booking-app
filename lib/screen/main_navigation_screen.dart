@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/screen/market_screen/market_create_screen.dart';
+import 'package:market_lot_app/screen/report_screen/report_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
@@ -49,6 +50,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               ? [
                   MarketListScreen(),
                   LandlordBookingsPage(),
+                  MarketReportScreen(),
                   ProfileScreen(),
                 ]
               : [
@@ -76,6 +78,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   icon: Icon(isLandlord ? Icons.request_page : Icons.book),
                   label: isLandlord ? 'Requests' : 'My Bookings',
                 ),
+                if (isLandlord)
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.analytics),
+                    label: 'Reports',
+                  ),
                 BottomNavigationBarItem(
                   icon: Icon(Icons.person),
                   label: 'Profile',

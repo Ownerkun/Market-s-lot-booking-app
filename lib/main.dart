@@ -1,6 +1,7 @@
 // main.dart
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
+import 'package:market_lot_app/screen/report_screen/report_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:encrypt/encrypt.dart' as encrypt;
 import 'package:provider/provider.dart';
@@ -65,6 +66,7 @@ class MyApp extends StatelessWidget {
       home: AuthScreen(),
       routes: {
         '/home': (context) => MainNavigationScreen(),
+        '/report': (context) => MarketReportScreen(),
       },
     );
   }

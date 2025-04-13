@@ -41,8 +41,8 @@ class BookingProvider with ChangeNotifier {
 
   // Fetch bookings for a landlord
   Future<void> fetchLandlordBookings({String? marketId}) async {
+    // Don't notify listeners immediately
     _isLoading = true;
-    notifyListeners();
 
     try {
       final token = await _authProvider.getToken();
@@ -54,8 +54,6 @@ class BookingProvider with ChangeNotifier {
           ? Uri.parse('$_baseUrl/landlord?marketId=$marketId')
           : Uri.parse('$_baseUrl/landlord');
 
-      // print('Fetching bookings from: ${url.toString()}'); // Debug URL
-
       final response = await http.get(
         url,
         headers: {
@@ -64,19 +62,12 @@ class BookingProvider with ChangeNotifier {
         },
       );
 
-      // print('Response status: ${response.statusCode}'); // Debug status code
-
       if (response.statusCode == 200) {
         final responseBody = json.decode(response.body);
-        // print(
-        //     'Raw response: ${json.encode(responseBody)}'); // Debug raw response
-
         if (responseBody is! List) {
-          throw Exception(
-              'Invalid response format: expected array, got ${responseBody.runtimeType}');
+          throw Exception('Invalid response format');
         }
 
-        // Validate and transform booking data
         _bookings = responseBody.map((booking) {
           if (booking['lot'] == null) {
             print(
@@ -86,9 +77,7 @@ class BookingProvider with ChangeNotifier {
         }).toList();
 
         _errorMessage = null;
-        print('Successfully loaded ${_bookings.length} bookings');
       } else if (response.statusCode == 401) {
-        print('Authentication failed: Token expired or invalid');
         await _authProvider.logout();
         throw Exception('Session expired. Please log in again.');
       } else {
@@ -97,12 +86,13 @@ class BookingProvider with ChangeNotifier {
       }
     } catch (e, stackTrace) {
       _errorMessage = 'Failed to fetch bookings: ${e.toString()}';
-      print('Error in fetchLandlordBookings: $e');
-      print('Stack trace: $stackTrace');
       rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      // Only notify listeners after the build phase is complete
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 

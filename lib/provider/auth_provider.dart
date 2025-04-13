@@ -185,40 +185,38 @@ class AuthProvider with ChangeNotifier {
   List<Map<String, dynamic>> get markets => _markets;
 
   Future<void> fetchMarkets() async {
+    // Don't notify immediately to avoid build phase conflicts
     _isLoading = true;
-    notifyListeners();
 
     try {
-      final encryptedToken = _prefs.getString('token');
-      if (encryptedToken == null) {
-        _errorMessage = 'No token found. Please log in.';
-        return;
-      }
+      final token = await getToken();
+      if (token == null) throw Exception('Authentication required');
 
-      final token = _decrypt(encryptedToken);
       final response = await http.get(
-        Uri.parse('$_baseMarketUrl'),
-        headers: {'Authorization': 'Bearer $token'},
+        Uri.parse('http://localhost:3002/markets'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
       );
 
-      print('Markets response: ${response.body}'); // Debugging
-
       if (response.statusCode == 200) {
-        final dynamic responseData = json.decode(response.body);
-        if (responseData is List) {
-          _markets = responseData.cast<Map<String, dynamic>>();
-        } else {
-          _markets = [];
-        }
+        _markets = (json.decode(response.body) as List)
+            .map((market) => market as Map<String, dynamic>)
+            .toList();
         _errorMessage = null;
       } else {
-        _errorMessage = 'Failed to fetch markets.';
+        throw Exception('Failed to load markets: ${response.statusCode}');
       }
     } catch (e) {
-      _errorMessage = 'An error occurred. Please try again.';
+      _errorMessage = e.toString();
+      rethrow;
     } finally {
       _isLoading = false;
-      notifyListeners();
+      // Safely notify listeners after build phase
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 

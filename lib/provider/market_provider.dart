@@ -18,6 +18,9 @@ class MarketProvider with ChangeNotifier {
   final Map<String, Set<DateTime>> _lotPendingDates = {};
   String? _errorMessage;
 
+  bool _lotsFetched = false;
+  bool get lotsFetched => _lotsFetched;
+
   // Getters
   List<Map<String, dynamic>> get lots => _lots;
   bool get isLoading => _isLoading;
@@ -113,6 +116,7 @@ class MarketProvider with ChangeNotifier {
           };
         }).toList();
         _isLoading = false;
+        _lotsFetched = true;
         notifyListeners();
       } else {
         throw Exception('Failed to fetch lots');
