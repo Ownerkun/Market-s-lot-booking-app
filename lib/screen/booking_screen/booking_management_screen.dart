@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:market_lot_app/screen/booking_screen/booking_details.dart';
 
 class LandlordBookingsPage extends StatefulWidget {
   const LandlordBookingsPage({Key? key}) : super(key: key);
@@ -133,7 +134,6 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     final endDate = DateTime.parse(booking['endDate']);
     final tenantEmail = booking['tenant']?['email'] ?? 'N/A';
 
-    // Calculate duration in days
     final duration = endDate.difference(startDate).inDays + 1;
 
     Color getStatusColor() {
@@ -151,169 +151,83 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
       }
     }
 
-    return Card(
-      elevation: 4,
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-      color: getStatusColor(),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Lot: $lotName',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _getStatusChipColor(status),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    status,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
-            Text(
-              'Dates: ${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(endDate)}',
-              style: TextStyle(color: Colors.black87),
-            ),
-            Text(
-              'Duration: $duration day${duration > 1 ? 's' : ''}',
-              style: TextStyle(color: Colors.black87),
-            ),
-            Text(
-              'Tenant: $tenantEmail',
-              style: TextStyle(color: Colors.black87),
-            ),
-            SizedBox(height: 12),
-            if (status == 'PENDING')
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ContractDetailScreen(contract: {
+              ...booking,
+              'id': booking['id'] ?? 'N/A',
+              'status': status,
+              'lot': {
+                ...booking['lot'],
+                'market':
+                    booking['lot']['market'] ?? {'name': 'Unknown Market'},
+              },
+              'tenant': booking['tenant'] ??
+                  {'name': 'Unknown Tenant', 'email': 'N/A', 'phone': 'N/A'},
+              'startDate': booking['startDate'],
+              'endDate': booking['endDate'],
+            }),
+          ),
+        );
+      },
+      child: Card(
+        elevation: 4,
+        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        color: getStatusColor(),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  ElevatedButton.icon(
-                    onPressed: _isUpdating
-                        ? null
-                        : () async {
-                            final confirmed = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                title: Text('Confirm Approval'),
-                                content: Text(
-                                    'Are you sure you want to approve this booking?'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, false),
-                                    child: Text('No'),
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () =>
-                                        Navigator.pop(context, true),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                    child: Text('Yes'),
-                                  ),
-                                ],
-                              ),
-                            );
-
-                            if (confirmed == true) {
-                              final marketId = booking['lot']?['marketId'];
-                              if (marketId != null) {
-                                _updateBookingStatus(
-                                    booking['id'], 'APPROVED', marketId);
-                              }
-                            }
-                          },
-                    icon: _isUpdating
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Icon(Icons.check, color: Colors.white),
-                    label: Text(
-                      'Approve',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
+                  Text(
+                    'Lot: $lotName',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
                     ),
                   ),
-                  SizedBox(width: 10),
-                  ElevatedButton.icon(
-                    onPressed: _isUpdating
-                        ? null
-                        : () async {
-                            final reason = await showDialog<String>(
-                              context: context,
-                              builder: (context) => RejectionReasonDialog(),
-                            );
-                            if (reason != null) {
-                              final marketId = booking['lot']?['marketId'];
-                              if (marketId != null) {
-                                _updateBookingStatus(
-                                    booking['id'], 'REJECTED', marketId);
-                              }
-                            }
-                          },
-                    icon: _isUpdating
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          )
-                        : Icon(Icons.close, color: Colors.white),
-                    label: Text(
-                      'Reject',
-                      style: TextStyle(color: Colors.white),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: _getStatusChipColor(status),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                    child: Text(
+                      status,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
                 ],
               ),
-            if (status == 'APPROVED')
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Row(
+              SizedBox(height: 12),
+              Text(
+                'Dates: ${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(endDate)}',
+                style: TextStyle(color: Colors.black87),
+              ),
+              Text(
+                'Duration: $duration day${duration > 1 ? 's' : ''}',
+                style: TextStyle(color: Colors.black87),
+              ),
+              Text(
+                'Tenant: $tenantEmail',
+                style: TextStyle(color: Colors.black87),
+              ),
+              SizedBox(height: 12),
+              if (status == 'PENDING')
+                Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     ElevatedButton.icon(
@@ -323,9 +237,9 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                               final confirmed = await showDialog<bool>(
                                 context: context,
                                 builder: (context) => AlertDialog(
-                                  title: Text('Confirm Cancellation'),
+                                  title: Text('Confirm Approval'),
                                   content: Text(
-                                      'Are you sure you want to cancel this booking?'),
+                                      'Are you sure you want to approve this booking?'),
                                   actions: [
                                     TextButton(
                                       onPressed: () =>
@@ -336,7 +250,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                                       onPressed: () =>
                                           Navigator.pop(context, true),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.orange,
+                                        backgroundColor: Colors.green,
                                         foregroundColor: Colors.white,
                                       ),
                                       child: Text('Yes'),
@@ -349,7 +263,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                                 final marketId = booking['lot']?['marketId'];
                                 if (marketId != null) {
                                   _updateBookingStatus(
-                                      booking['id'], 'CANCELLED', marketId);
+                                      booking['id'], 'APPROVED', marketId);
                                 }
                               }
                             },
@@ -363,11 +277,53 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                                     AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
-                          : Icon(Icons.cancel_outlined, color: Colors.white),
-                      label: Text('Cancel Booking',
-                          style: TextStyle(color: Colors.white)),
+                          : Icon(Icons.check, color: Colors.white),
+                      label: Text(
+                        'Approve',
+                        style: TextStyle(color: Colors.white),
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      onPressed: _isUpdating
+                          ? null
+                          : () async {
+                              final reason = await showDialog<String>(
+                                context: context,
+                                builder: (context) => RejectionReasonDialog(),
+                              );
+                              if (reason != null) {
+                                final marketId = booking['lot']?['marketId'];
+                                if (marketId != null) {
+                                  _updateBookingStatus(
+                                      booking['id'], 'REJECTED', marketId);
+                                }
+                              }
+                            },
+                      icon: _isUpdating
+                          ? SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Icon(Icons.close, color: Colors.white),
+                      label: Text(
+                        'Reject',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
@@ -376,8 +332,75 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                     ),
                   ],
                 ),
-              ),
-          ],
+              if (status == 'APPROVED')
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: _isUpdating
+                            ? null
+                            : () async {
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: Text('Confirm Cancellation'),
+                                    content: Text(
+                                        'Are you sure you want to cancel this booking?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, false),
+                                        child: Text('No'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(context, true),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.orange,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        child: Text('Yes'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirmed == true) {
+                                  final marketId = booking['lot']?['marketId'];
+                                  if (marketId != null) {
+                                    _updateBookingStatus(
+                                        booking['id'], 'CANCELLED', marketId);
+                                  }
+                                }
+                              },
+                        icon: _isUpdating
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : Icon(Icons.cancel_outlined, color: Colors.white),
+                        label: Text('Cancel Booking',
+                            style: TextStyle(color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
