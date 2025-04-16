@@ -8,6 +8,7 @@ import 'package:market_lot_app/screen/booking_screen/booking_management_screen.d
 import 'package:market_lot_app/screen/market_screen/market_list_screen.dart';
 import 'package:market_lot_app/screen/profile/profile_screen.dart';
 import 'package:market_lot_app/provider/market_provider.dart';
+import 'dart:math';
 
 class MainNavigationScreen extends StatefulWidget {
   @override
@@ -16,6 +17,27 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final authProvider = Provider.of<AuthProvider>(context, listen: true);
+    final screens = authProvider.userRole == 'LANDLORD'
+        ? 4 // Number of screens for landlord
+        : 2; // Number of screens for tenant
+    if (_selectedIndex >= screens) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _selectedIndex = 0);
+      });
+    }
+  }
+
+  void _onNavItemTapped(int index, bool isLandlord) {
+    final maxIndex = isLandlord ? 3 : 1;
+    setState(() {
+      _selectedIndex = min(index, maxIndex);
+    });
+  }
 
   void _navigateToMarketCreation(BuildContext context) {
     Navigator.push(
@@ -55,18 +77,22 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ]
               : [
                   MarketListScreen(),
-                  //TenantBookingScreen(),
                   ProfileScreen(),
                 ];
 
+          // Validate and correct the selected index
+          if (_selectedIndex >= screens.length) {
+            _selectedIndex = 0;
+          }
+
           return Scaffold(
             body: IndexedStack(
-              index: _selectedIndex,
+              index: min(_selectedIndex, screens.length - 1),
               children: screens,
             ),
             bottomNavigationBar: BottomNavigationBar(
-              currentIndex: _selectedIndex,
-              onTap: (index) => setState(() => _selectedIndex = index),
+              currentIndex: min(_selectedIndex, screens.length - 1),
+              onTap: (index) => _onNavItemTapped(index, isLandlord),
               selectedItemColor: Theme.of(context).primaryColor,
               unselectedItemColor: Colors.grey,
               items: [
@@ -74,10 +100,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   icon: Icon(Icons.store),
                   label: 'Markets',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(isLandlord ? Icons.request_page : Icons.book),
-                  label: isLandlord ? 'Requests' : 'My Bookings',
-                ),
+                if (isLandlord)
+                  BottomNavigationBarItem(
+                    icon: Icon(Icons.request_page),
+                    label: 'Requests',
+                  ),
                 if (isLandlord)
                   BottomNavigationBarItem(
                     icon: Icon(Icons.analytics),
