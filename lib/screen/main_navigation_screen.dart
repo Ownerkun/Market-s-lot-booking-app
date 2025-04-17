@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:market_lot_app/screen/booking_screen/booking_tenant.dart';
 import 'package:market_lot_app/screen/market_screen/market_create_screen.dart';
 import 'package:market_lot_app/screen/report_screen/report_screen.dart';
 import 'package:provider/provider.dart';
@@ -24,7 +25,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: true);
     final screens = authProvider.userRole == 'LANDLORD'
         ? 4 // Number of screens for landlord
-        : 2; // Number of screens for tenant
+        : 3; // Number of screens for tenant
     if (_selectedIndex >= screens) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         setState(() => _selectedIndex = 0);
@@ -33,9 +34,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _onNavItemTapped(int index, bool isLandlord) {
-    final maxIndex = isLandlord ? 3 : 1;
+    // final maxIndex = isLandlord ? 3 : 1;
     setState(() {
-      _selectedIndex = min(index, maxIndex);
+      // _selectedIndex = min(index, maxIndex);
+      _selectedIndex = index;
     });
   }
 
@@ -77,6 +79,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ]
               : [
                   MarketListScreen(),
+                  TenantBookingsPage(),
                   ProfileScreen(),
                 ];
 
@@ -91,26 +94,31 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               children: screens,
             ),
             bottomNavigationBar: BottomNavigationBar(
-              currentIndex: min(_selectedIndex, screens.length - 1),
+              currentIndex: _selectedIndex,
               onTap: (index) => _onNavItemTapped(index, isLandlord),
               selectedItemColor: Theme.of(context).primaryColor,
               unselectedItemColor: Colors.grey,
               items: [
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.store),
                   label: 'Markets',
                 ),
+                if (!isLandlord) // Tenant booking icon
+                  const BottomNavigationBarItem(
+                    icon: Icon(Icons.calendar_today),
+                    label: 'Bookings',
+                  ),
                 if (isLandlord)
-                  BottomNavigationBarItem(
+                  const BottomNavigationBarItem(
                     icon: Icon(Icons.request_page),
                     label: 'Requests',
                   ),
                 if (isLandlord)
-                  BottomNavigationBarItem(
+                  const BottomNavigationBarItem(
                     icon: Icon(Icons.analytics),
                     label: 'Reports',
                   ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.person),
                   label: 'Profile',
                 ),
