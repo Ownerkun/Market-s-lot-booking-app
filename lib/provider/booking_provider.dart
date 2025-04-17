@@ -118,6 +118,8 @@ class BookingProvider with ChangeNotifier {
     try {
       final response = await http.get(url, headers: headers);
 
+      print("API Response for tenant bookings: ${response.body}");
+
       if (response.statusCode == 200) {
         _bookings = json.decode(response.body);
         _errorMessage = null;

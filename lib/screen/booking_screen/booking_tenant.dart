@@ -66,7 +66,9 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
           final status =
               booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
 
-          if (status == 'APPROVED' && endDate.isAfter(now)) {
+          // Include both APPROVED and PENDING in active bookings
+          if (status == 'APPROVED' && endDate.isAfter(now) ||
+              status == 'PENDING') {
             active.add(booking);
           } else {
             history.add(booking);
@@ -107,7 +109,9 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
   Widget _buildBookingCard(dynamic booking, BuildContext context) {
     final status = booking['status'];
     final lotName = booking['lot']?['name'] ?? 'Unknown Lot';
-    final marketName = booking['lot']?['market']?['name'] ?? 'Unknown Market';
+    final marketId = booking['lot']?['marketId'] ?? '';
+    final marketName = booking['lot']?['market']?['name'] ??
+        'Market ID: ${marketId.isNotEmpty ? marketId.substring(0, 8) : 'N/A'}...';
     final startDate = DateTime.parse(booking['startDate']);
     final endDate = DateTime.parse(booking['endDate']);
     final duration = endDate.difference(startDate).inDays + 1;
@@ -138,8 +142,10 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
               'status': status,
               'lot': {
                 ...booking['lot'],
-                'market':
-                    booking['lot']?['market'] ?? {'name': 'Unknown Market'},
+                'market': {
+                  'name': marketName,
+                  'id': marketId,
+                },
               },
               'tenant': booking['tenant'] ??
                   {'name': 'Unknown Tenant', 'email': 'N/A', 'phone': 'N/A'},
@@ -180,12 +186,21 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
                       color: _getStatusChipColor(status),
                       borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (status == 'PENDING')
+                          Icon(Icons.access_time,
+                              size: 16, color: Colors.white),
+                        SizedBox(width: status == 'PENDING' ? 4 : 0),
+                        Text(
+                          status,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -247,6 +262,21 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
   }
 
   Future<void> _cancelBooking(String bookingId) async {
+    final booking = _activeBookings.firstWhere(
+      (b) => b['id'] == bookingId,
+      orElse: () => null,
+    );
+
+    if (booking == null || booking['status'] != 'PENDING') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cannot cancel this booking'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -353,7 +383,7 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
             bookingProvider.isLoading
                 ? Center(child: CircularProgressIndicator())
                 : _activeBookings.isEmpty
-                    ? _buildEmptyState('No active bookings')
+                    ? _buildEmptyState('No active or pending bookings')
                     : RefreshIndicator(
                         onRefresh: () async {
                           await bookingProvider.fetchTenantBookings();
@@ -372,7 +402,7 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
             bookingProvider.isLoading
                 ? Center(child: CircularProgressIndicator())
                 : _historyBookings.isEmpty
-                    ? _buildEmptyState('No booking history yet')
+                    ? _buildEmptyState('No past bookings')
                     : RefreshIndicator(
                         onRefresh: () async {
                           await bookingProvider.fetchTenantBookings();
