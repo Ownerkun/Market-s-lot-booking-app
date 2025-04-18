@@ -5,7 +5,7 @@ import 'package:market_lot_app/screen/report_screen/report_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
-import 'package:market_lot_app/screen/booking_screen/booking_management_screen.dart';
+import 'package:market_lot_app/screen/booking_screen/booking_management.dart';
 import 'package:market_lot_app/screen/market_screen/market_list_screen.dart';
 import 'package:market_lot_app/screen/profile/profile_screen.dart';
 import 'package:market_lot_app/provider/market_provider.dart';

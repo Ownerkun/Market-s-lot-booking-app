@@ -461,7 +461,6 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  // Add to BookingProvider class
   Map<String, List<DateTime>> _lotPendingDates = {};
 
   Future<void> loadPendingDatesForLot(String lotId, DateTime month) async {

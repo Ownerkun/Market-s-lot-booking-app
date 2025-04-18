@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/provider/market_provider.dart';
-import 'package:market_lot_app/screen/booking_screen/booking_management_screen.dart';
+import 'package:market_lot_app/screen/booking_screen/booking_management.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_list_view.dart';
 import 'package:market_lot_app/screen/market_screen/lot_screen/lot_map_view.dart';
 import 'package:provider/provider.dart';

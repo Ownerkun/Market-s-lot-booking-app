@@ -105,7 +105,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
       for (var marketBookings in [...pending.values, ...history.values]) {
         marketBookings.sort((a, b) {
           final aDate = DateTime.parse(a['startDate']);
-          final bDate = DateTime.parse(b['startDate']);
+          final bDate = DateTime.parse(a['startDate']);
           return bDate.compareTo(aDate); // Most recent first
         });
       }
@@ -131,221 +131,200 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     final lotName = booking['lot']['name'];
     final startDate = DateTime.parse(booking['startDate']);
     final endDate = DateTime.parse(booking['endDate']);
-
-    // Get tenant info - fallback to default values if not available
     final tenantName = booking['tenant']?['name'] ?? 'Unknown Tenant';
     final tenantEmail = booking['tenant']?['email'] ?? 'N/A';
     final tenantPhone = booking['tenant']?['phone'] ?? 'N/A';
-
     final duration = endDate.difference(startDate).inDays + 1;
+    final lotWidth = booking['lot']?['shape']?['width']?.toDouble() ?? 0.0;
+    final lotHeight = booking['lot']?['shape']?['height']?.toDouble() ?? 0.0;
+    final lotSize = '${lotWidth}x${lotHeight} cm';
+    final lotPrice = booking['lot']?['price']?.toDouble() ?? 0.0;
+    final totalPrice = lotPrice * duration;
+    final paymentStatus = booking['paymentStatus'] ?? 'Waiting for payment';
+    final paymentMethod = booking['paymentMethod'] ?? 'QR Code / Bank Transfer';
+    final paymentDue = booking['paymentDue'] ?? 'within 3 days';
 
-    Color getStatusColor() {
-      switch (status) {
-        case 'PENDING':
-          return Colors.orange.shade100;
-        case 'APPROVED':
-          return Colors.green.shade100;
-        case 'REJECTED':
-          return Colors.red.shade100;
-        case 'CANCELLED':
-          return Colors.grey.shade100;
-        default:
-          return Colors.grey.shade100;
-      }
-    }
-
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ContractDetailScreen(contract: {
-              ...booking,
-              'id': booking['id'] ?? 'N/A',
-              'status': status,
-              'lot': {
-                ...booking['lot'],
-                'market':
-                    booking['lot']['market'] ?? {'name': 'Unknown Market'},
-              },
-              'tenant': {
-                'name': tenantName,
-                'email': tenantEmail,
-                'phone': tenantPhone,
-                'id': booking['tenantId'],
-              },
-              'startDate': booking['startDate'],
-              'endDate': booking['endDate'],
-            }),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Container(
+        width: double.infinity,
+        constraints: BoxConstraints(maxWidth: 570),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Theme.of(context).dividerColor,
+            width: 1,
           ),
-        );
-      },
-      child: Card(
-        elevation: 4,
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
         ),
-        color: getStatusColor(),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: EdgeInsets.all(4),
           child: Column(
+            mainAxisSize: MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Lot: $lotName',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _getStatusChipColor(status),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12),
-              Text(
-                'Dates: ${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(endDate)}',
-                style: TextStyle(color: Colors.black87),
-              ),
-              Text(
-                'Duration: $duration day${duration > 1 ? 's' : ''}',
-                style: TextStyle(color: Colors.black87),
-              ),
-              Text(
-                'Tenant: $tenantName (${tenantEmail})',
-                style: TextStyle(color: Colors.black87),
-              ),
-              SizedBox(height: 12),
-              if (status == 'PENDING')
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    ElevatedButton.icon(
-                      onPressed: _isUpdating
-                          ? null
-                          : () async {
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: Text('Confirm Approval'),
-                                  content: Text(
-                                      'Are you sure you want to approve this booking?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, false),
-                                      child: Text('No'),
-                                    ),
-                                    ElevatedButton(
-                                      onPressed: () =>
-                                          Navigator.pop(context, true),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.green,
-                                        foregroundColor: Colors.white,
-                                      ),
-                                      child: Text('Yes'),
-                                    ),
-                                  ],
-                                ),
-                              );
-
-                              if (confirmed == true) {
-                                final marketId = booking['lot']?['marketId'];
-                                if (marketId != null) {
-                                  _updateBookingStatus(
-                                      booking['id'], 'APPROVED', marketId);
-                                }
-                              }
-                            },
-                      icon: _isUpdating
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Icon(Icons.check, color: Colors.white),
-                      label: Text(
-                        'Approve',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: 10),
-                    ElevatedButton.icon(
-                      onPressed: _isUpdating
-                          ? null
-                          : () async {
-                              final reason = await showDialog<String>(
-                                context: context,
-                                builder: (context) => RejectionReasonDialog(),
-                              );
-                              if (reason != null) {
-                                final marketId = booking['lot']?['marketId'];
-                                if (marketId != null) {
-                                  _updateBookingStatus(
-                                      booking['id'], 'REJECTED', marketId);
-                                }
-                              }
-                            },
-                      icon: _isUpdating
-                          ? SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor:
-                                    AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Icon(Icons.close, color: Colors.white),
-                      label: Text(
-                        'Reject',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              if (status == 'APPROVED')
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, 12, 0, 8),
+                child: RichText(
+                  text: TextSpan(
                     children: [
-                      ElevatedButton.icon(
+                      TextSpan(
+                        text: 'Name: ',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                      TextSpan(
+                        text: tenantName,
+                        style: TextStyle(
+                          color: Theme.of(context).primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    ],
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, 0, 12, 0),
+                child: Text(
+                  'Details of Booking',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, 4, 12, 16),
+                child: Text(
+                  '🔹 Lot Name: $lotName\n'
+                  '🔹 Lot Size: $lotSize\n'
+                  '🔹 Rental Period: ${DateFormat('d MMM yyyy').format(startDate)} - ${DateFormat('d MMM yyyy').format(endDate)}\n'
+                  '🔹 Duration: $duration day${duration > 1 ? 's' : ''}\n'
+                  '🔹 Daily Price: ${NumberFormat('#,##0.00').format(lotPrice)} THB\n'
+                  '🔹 Total Price: ${NumberFormat('#,##0.00').format(totalPrice)} THB\n'
+                  '🔹 Payment Status: $paymentStatus\n'
+                  '🔹 Payment Method: $paymentMethod\n'
+                  '🔹 Payment Due: $paymentDue',
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+              ),
+              Divider(
+                height: 2,
+                thickness: 1,
+                color: Theme.of(context).dividerColor,
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(12, 12, 12, 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.max,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Container(
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: _getStatusChipColor(status).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _getStatusChipColor(status),
+                          width: 2,
+                        ),
+                      ),
+                      child: Align(
+                        alignment: Alignment.center,
+                        child: Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Text(
+                            status,
+                            style: TextStyle(
+                              color: _getStatusChipColor(status),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (status == 'PENDING')
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: _isUpdating
+                                ? null
+                                : () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (context) => AlertDialog(
+                                        title: Text('Confirm Approval'),
+                                        content: Text(
+                                            'Are you sure you want to approve this booking?'),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, false),
+                                            child: Text('No'),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () =>
+                                                Navigator.pop(context, true),
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: Colors.green,
+                                              foregroundColor: Colors.white,
+                                            ),
+                                            child: Text('Yes'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true) {
+                                      final marketId =
+                                          booking['lot']?['marketId'];
+                                      if (marketId != null) {
+                                        _updateBookingStatus(booking['id'],
+                                            'APPROVED', marketId);
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text('Approve'),
+                          ),
+                          SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: _isUpdating
+                                ? null
+                                : () async {
+                                    final reason = await showDialog<String>(
+                                      context: context,
+                                      builder: (context) =>
+                                          RejectionReasonDialog(),
+                                    );
+                                    if (reason != null) {
+                                      final marketId =
+                                          booking['lot']?['marketId'];
+                                      if (marketId != null) {
+                                        _updateBookingStatus(
+                                            booking['id'], 'REJECTED', marketId,
+                                            reason: reason);
+                                      }
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: Text('Reject'),
+                          ),
+                        ],
+                      ),
+                    if (status == 'APPROVED')
+                      ElevatedButton(
                         onPressed: _isUpdating
                             ? null
                             : () async {
@@ -373,7 +352,6 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                                     ],
                                   ),
                                 );
-
                                 if (confirmed == true) {
                                   final marketId = booking['lot']?['marketId'];
                                   if (marketId != null) {
@@ -382,30 +360,18 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                                   }
                                 }
                               },
-                        icon: _isUpdating
-                            ? SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                      Colors.white),
-                                ),
-                              )
-                            : Icon(Icons.cancel_outlined, color: Colors.white),
-                        label: Text('Cancel Booking',
-                            style: TextStyle(color: Colors.white)),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.orange,
                           foregroundColor: Colors.white,
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
+                        child: Text('Cancel Booking'),
                       ),
-                    ],
-                  ),
+                  ],
                 ),
+              ),
             ],
           ),
         ),
@@ -429,7 +395,8 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
   }
 
   Future<void> _updateBookingStatus(
-      String bookingId, String status, String marketId) async {
+      String bookingId, String status, String marketId,
+      {String? reason}) async {
     if (_isUpdating) return;
 
     setState(() => _isUpdating = true);
@@ -437,19 +404,6 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     try {
       final bookingProvider =
           Provider.of<BookingProvider>(context, listen: false);
-
-      // Handle rejection reason
-      String? reason;
-      if (status == 'REJECTED') {
-        reason = await showDialog<String>(
-          context: context,
-          builder: (context) => RejectionReasonDialog(),
-        );
-        if (reason == null) {
-          setState(() => _isUpdating = false);
-          return;
-        }
-      }
 
       final success = await bookingProvider.updateBookingStatus(
         bookingId,

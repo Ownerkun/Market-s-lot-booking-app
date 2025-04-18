@@ -110,26 +110,18 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
     final status = booking['status'];
     final lotName = booking['lot']?['name'] ?? 'Unknown Lot';
     final marketId = booking['lot']?['marketId'] ?? '';
-    final marketName = booking['lot']?['market']?['name'] ??
-        'Market ID: ${marketId.isNotEmpty ? marketId.substring(0, 8) : 'N/A'}...';
+    final marketName = booking['lot']?['market']?['name'] ?? 'Unknown Market';
     final startDate = DateTime.parse(booking['startDate']);
     final endDate = DateTime.parse(booking['endDate']);
     final duration = endDate.difference(startDate).inDays + 1;
-
-    Color getStatusColor() {
-      switch (status) {
-        case 'PENDING':
-          return Colors.orange.shade100;
-        case 'APPROVED':
-          return Colors.green.shade100;
-        case 'REJECTED':
-          return Colors.red.shade100;
-        case 'CANCELLED':
-          return Colors.grey.shade100;
-        default:
-          return Colors.grey.shade100;
-      }
-    }
+    final lotWidth = booking['lot']?['shape']?['width']?.toDouble() ?? 0.0;
+    final lotHeight = booking['lot']?['shape']?['height']?.toDouble() ?? 0.0;
+    final lotSize = '${lotWidth}x${lotHeight} cm';
+    final lotPrice = booking['lot']?['price']?.toDouble() ?? 0.0;
+    final totalPrice = lotPrice * duration;
+    final paymentStatus = booking['paymentStatus'] ?? 'Waiting for payment';
+    final paymentMethod = booking['paymentMethod'] ?? 'QR Code / Bank Transfer';
+    final paymentDue = booking['paymentDue'] ?? 'Within 7 days';
 
     return InkWell(
       onTap: () {
@@ -159,91 +151,121 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
           ),
         );
       },
-      child: Card(
-        elevation: 4,
-        margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        color: getStatusColor(),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      lotName,
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black87,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: _getStatusChipColor(status),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Container(
+          width: double.infinity,
+          constraints: BoxConstraints(maxWidth: 570),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Theme.of(context).dividerColor,
+              width: 1,
+            ),
+          ),
+          child: Padding(
+            padding: EdgeInsets.all(4),
+            child: Column(
+              mainAxisSize: MainAxisSize.max,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, 12, 0, 8),
+                  child: RichText(
+                    text: TextSpan(
                       children: [
-                        if (status == 'PENDING')
-                          Icon(Icons.access_time,
-                              size: 16, color: Colors.white),
-                        SizedBox(width: status == 'PENDING' ? 4 : 0),
-                        Text(
-                          status,
+                        TextSpan(
+                          text: 'Lot Name: ',
+                          style: TextStyle(color: Colors.black87),
+                        ),
+                        TextSpan(
+                          text: lotName,
                           style: TextStyle(
-                            color: Colors.white,
+                            color: Theme.of(context).primaryColor,
                             fontWeight: FontWeight.bold,
                           ),
-                        ),
+                        )
                       ],
+                      style: TextStyle(fontSize: 16),
                     ),
                   ),
-                ],
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Market: $marketName',
-                style: TextStyle(color: Colors.black87),
-              ),
-              SizedBox(height: 8),
-              Text(
-                'Dates: ${DateFormat('MMM d').format(startDate)} - ${DateFormat('MMM d, yyyy').format(endDate)}',
-                style: TextStyle(color: Colors.black87),
-              ),
-              Text(
-                'Duration: $duration day${duration > 1 ? 's' : ''}',
-                style: TextStyle(color: Colors.black87),
-              ),
-              if (status == 'PENDING')
+                ),
                 Padding(
-                  padding: const EdgeInsets.only(top: 12.0),
+                  padding: EdgeInsets.fromLTRB(12, 0, 12, 0),
+                  child: Text(
+                    'Details of Booking',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, 4, 12, 16),
+                  child: Text(
+                    '🔹 Lot Size: $lotSize\n'
+                    '🔹 Rental Period: ${DateFormat('d MMM yyyy').format(startDate)} - ${DateFormat('d MMM yyyy').format(endDate)}\n'
+                    '🔹 Duration: $duration day${duration > 1 ? 's' : ''}\n'
+                    '🔹 Daily Price: ${NumberFormat('#,##0.00').format(lotPrice)} THB\n'
+                    '🔹 Total Price: ${NumberFormat('#,##0.00').format(totalPrice)} THB\n'
+                    '🔹 Payment Status: $paymentStatus\n'
+                    '🔹 Payment Method: $paymentMethod\n'
+                    '🔹 Payment Due: $paymentDue',
+                    style: TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
+                ),
+                Divider(
+                  height: 2,
+                  thickness: 1,
+                  color: Theme.of(context).dividerColor,
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, 12, 12, 8),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.max,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      ElevatedButton(
-                        onPressed: () => _cancelBooking(booking['id']),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
+                      Container(
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: _getStatusChipColor(status).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: _getStatusChipColor(status),
+                            width: 2,
                           ),
                         ),
-                        child: Text('Cancel Request'),
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text(
+                              status,
+                              style: TextStyle(
+                                color: _getStatusChipColor(status),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
+                      if (status == 'PENDING')
+                        ElevatedButton(
+                          onPressed: () => _cancelBooking(booking['id']),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text('Cancel Request'),
+                        ),
                     ],
                   ),
                 ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
