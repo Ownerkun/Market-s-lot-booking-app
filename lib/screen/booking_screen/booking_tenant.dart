@@ -147,8 +147,12 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
                   'id': marketId,
                 },
               },
-              'tenant': booking['tenant'] ??
-                  {'name': 'Unknown Tenant', 'email': 'N/A', 'phone': 'N/A'},
+              'tenant': {
+                'name': 'Loading...',
+                'email': 'N/A',
+                'phone': 'N/A',
+                'id': booking['tenantId'],
+              },
               'startDate': booking['startDate'],
               'endDate': booking['endDate'],
             }),

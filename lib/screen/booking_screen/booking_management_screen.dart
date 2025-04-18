@@ -131,7 +131,11 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     final lotName = booking['lot']['name'];
     final startDate = DateTime.parse(booking['startDate']);
     final endDate = DateTime.parse(booking['endDate']);
+
+    // Get tenant info - fallback to default values if not available
+    final tenantName = booking['tenant']?['name'] ?? 'Unknown Tenant';
     final tenantEmail = booking['tenant']?['email'] ?? 'N/A';
+    final tenantPhone = booking['tenant']?['phone'] ?? 'N/A';
 
     final duration = endDate.difference(startDate).inDays + 1;
 
@@ -164,8 +168,12 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                 'market':
                     booking['lot']['market'] ?? {'name': 'Unknown Market'},
               },
-              'tenant': booking['tenant'] ??
-                  {'name': 'Unknown Tenant', 'email': 'N/A', 'phone': 'N/A'},
+              'tenant': {
+                'name': tenantName,
+                'email': tenantEmail,
+                'phone': tenantPhone,
+                'id': booking['tenantId'],
+              },
               'startDate': booking['startDate'],
               'endDate': booking['endDate'],
             }),
@@ -221,7 +229,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
                 style: TextStyle(color: Colors.black87),
               ),
               Text(
-                'Tenant: $tenantEmail',
+                'Tenant: $tenantName (${tenantEmail})',
                 style: TextStyle(color: Colors.black87),
               ),
               SizedBox(height: 12),

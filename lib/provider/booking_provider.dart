@@ -68,13 +68,29 @@ class BookingProvider with ChangeNotifier {
           throw Exception('Invalid response format');
         }
 
-        _bookings = responseBody.map((booking) {
-          if (booking['lot'] == null) {
-            print(
-                'Warning: Booking without lot information found: ${booking['id']}');
+        _bookings = await Future.wait(responseBody.map((booking) async {
+          if (booking['tenantId'] != null) {
+            try {
+              final tenantDetails =
+                  await fetchTenantDetails(booking['tenantId']);
+              return Map<String, dynamic>.from({
+                ...booking,
+                'tenant': tenantDetails,
+              });
+            } catch (e) {
+              print('Error fetching tenant details: $e');
+              return Map<String, dynamic>.from({
+                ...booking,
+                'tenant': {
+                  'name': 'Unknown Tenant',
+                  'email': 'N/A',
+                  'phone': 'N/A'
+                },
+              });
+            }
           }
-          return booking;
-        }).toList();
+          return Map<String, dynamic>.from(booking);
+        }).toList());
 
         _errorMessage = null;
       } else if (response.statusCode == 401) {
@@ -548,6 +564,31 @@ class BookingProvider with ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  Future<Map<String, dynamic>> fetchTenantDetails(String tenantId) async {
+    final token = await _authProvider.getToken();
+    if (token == null) throw Exception('Authentication required');
+
+    final response = await http.get(
+      Uri.parse('http://localhost:3001/auth/profile/$tenantId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body)['data'];
+      return Map<String, dynamic>.from({
+        'name':
+            '${data['profile']['firstName']} ${data['profile']['lastName']}',
+        'email': data['email'],
+        'phone': data['profile']['phone'] ?? 'N/A',
+        'id': data['userId'],
+      });
+    } else {
+      throw Exception('Failed to fetch tenant details');
     }
   }
 }

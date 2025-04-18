@@ -31,38 +31,51 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
   bool _isRangeSelection = true;
 
   List<Map<String, dynamic>> get displayedBookings {
-    final bookings = _selectedMarketId == null
-        ? _bookingProvider.bookings
-        : _bookingProvider.bookings
-            .where((b) => b['lot']?['marketId'] == _selectedMarketId)
-            .toList();
+    try {
+      final bookings = _selectedMarketId == null
+          ? _bookingProvider.bookings
+          : _bookingProvider.bookings
+              .where((b) => b['lot']?['marketId'] == _selectedMarketId)
+              .toList();
 
-    return bookings
-        .where((booking) {
-          if (!_dateFilterActive) return true;
+      return bookings
+          .where((booking) {
+            if (!_dateFilterActive) return true;
 
-          try {
-            final bookingDate =
-                DateTime.parse(booking['createdAt'] ?? booking['startDate']);
+            try {
+              final bookingDate =
+                  DateTime.parse(booking['createdAt'] ?? booking['startDate']);
 
-            if (_selectedDate != null &&
-                _rangeStart == null &&
-                _rangeEnd == null) {
-              return isSameDay(bookingDate, _selectedDate!);
+              if (_selectedDate != null &&
+                  _rangeStart == null &&
+                  _rangeEnd == null) {
+                return isSameDay(bookingDate, _selectedDate!);
+              }
+
+              return (_rangeStart == null ||
+                      bookingDate
+                          .isAfter(_rangeStart!.subtract(Duration(days: 1)))) &&
+                  (_rangeEnd == null ||
+                      bookingDate.isBefore(_rangeEnd!.add(Duration(days: 1))));
+            } catch (e) {
+              print('Error parsing date: $e');
+              return true;
             }
-
-            return (_rangeStart == null ||
-                    bookingDate
-                        .isAfter(_rangeStart!.subtract(Duration(days: 1)))) &&
-                (_rangeEnd == null ||
-                    bookingDate.isBefore(_rangeEnd!.add(Duration(days: 1))));
-          } catch (e) {
-            print('Error parsing date: $e');
-            return true;
-          }
-        })
-        .cast<Map<String, dynamic>>()
-        .toList();
+          })
+          .map((booking) {
+            try {
+              return Map<String, dynamic>.from(booking);
+            } catch (e) {
+              print('Error converting booking data: $e');
+              return <String, dynamic>{};
+            }
+          })
+          .where((booking) => booking.isNotEmpty)
+          .toList();
+    } catch (e) {
+      print('Error processing bookings: $e');
+      return [];
+    }
   }
 
   @override
