@@ -387,6 +387,10 @@ class _AuthScreenState extends State<AuthScreen>
                                       value: 'LANDLORD',
                                       child: Text('Landlord'),
                                     ),
+                                    DropdownMenuItem(
+                                      value: 'ADMIN',
+                                      child: Text('Admin'),
+                                    ),
                                   ],
                                   onChanged: (value) {
                                     setState(() {

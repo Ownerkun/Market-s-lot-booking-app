@@ -65,6 +65,7 @@ class MyApp extends StatelessWidget {
       ),
       home: AuthScreen(),
       routes: {
+        '/auth': (context) => AuthScreen(),
         '/home': (context) => MainNavigationScreen(),
         '/report': (context) => MarketReportScreen(),
       },

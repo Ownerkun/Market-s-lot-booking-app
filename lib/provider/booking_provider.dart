@@ -431,36 +431,6 @@ class BookingProvider with ChangeNotifier {
     }
   }
 
-  Future<void> _updateLotAvailability(
-    String lotId,
-    DateTime startDate,
-    DateTime endDate,
-    bool available,
-    String token,
-  ) async {
-    final url = Uri.parse('$_lotBaseUrl/$lotId/availability');
-    final headers = {
-      'Authorization': 'Bearer $token',
-      'Content-Type': 'application/json',
-    };
-
-    // Create date range
-    final dates = _getDatesInRange(startDate, endDate);
-
-    for (final date in dates) {
-      final formattedDate = DateFormat('yyyy-MM-dd').format(date);
-
-      await http.put(
-        url,
-        headers: headers,
-        body: jsonEncode({
-          'date': formattedDate,
-          'available': available,
-        }),
-      );
-    }
-  }
-
   Map<String, List<DateTime>> _lotPendingDates = {};
 
   Future<void> loadPendingDatesForLot(String lotId, DateTime month) async {

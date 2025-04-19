@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:market_lot_app/admin/admin_screen.dart';
 import 'package:market_lot_app/screen/booking_screen/booking_tenant.dart';
 import 'package:market_lot_app/screen/market_screen/market_create_screen.dart';
 import 'package:market_lot_app/screen/report_screen/report_screen.dart';
@@ -34,9 +35,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   }
 
   void _onNavItemTapped(int index, bool isLandlord) {
-    // final maxIndex = isLandlord ? 3 : 1;
     setState(() {
-      // _selectedIndex = min(index, maxIndex);
       _selectedIndex = index;
     });
   }
@@ -68,6 +67,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ],
       child: Consumer<AuthProvider>(
         builder: (context, authProvider, _) {
+          // Redirect admin to admin screen
+          if (authProvider.userRole == 'ADMIN') {
+            return AdminScreen();
+          }
+
           final isLandlord = authProvider.userRole == 'LANDLORD';
 
           final List<Widget> screens = isLandlord
@@ -103,7 +107,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   icon: Icon(Icons.store),
                   label: 'Markets',
                 ),
-                if (!isLandlord) // Tenant booking icon
+                if (!isLandlord)
                   const BottomNavigationBarItem(
                     icon: Icon(Icons.calendar_today),
                     label: 'Bookings',

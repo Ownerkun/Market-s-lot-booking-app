@@ -344,4 +344,64 @@ class AuthProvider with ChangeNotifier {
       throw Exception('Failed to update lot: $e');
     }
   }
+
+  Future<List<dynamic>> getAllUsers() async {
+    _isLoading = true;
+
+    try {
+      final token = await getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final response = await http.get(
+        Uri.parse('$_baseAuthUrl/users'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return data['data'] as List<dynamic>;
+      } else {
+        throw Exception('Failed to load users: ${response.statusCode}');
+      }
+    } catch (e) {
+      _errorMessage = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
+    }
+  }
+
+  Future<void> deleteUser(String userId) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final token = await getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final response = await http.delete(
+        Uri.parse('$_baseAuthUrl/user/$userId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete user: ${response.statusCode}');
+      }
+    } catch (e) {
+      _errorMessage = e.toString();
+      rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 }
