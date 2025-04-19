@@ -46,12 +46,24 @@ class _MarketListScreenState extends State<MarketListScreen> {
             .where((market) {
               final marketMap = market as Map<String, dynamic>;
               final name = marketMap['name']?.toString().toLowerCase() ?? '';
-              return name.contains(query);
+              final location =
+                  marketMap['location']?.toString().toLowerCase() ?? '';
+              final tags = marketMap['tags'] != null
+                  ? (marketMap['tags'] as List)
+                      .map((t) => t['name'] as String)
+                      .join(' ')
+                      .toLowerCase()
+                  : '';
+
+              // Improved search to include location and tags
+              return name.contains(query) ||
+                  location.contains(query) ||
+                  tags.contains(query);
             })
             .toList()
             .cast<Map<String, dynamic>>();
       } else {
-        _filteredMarkets = []; // Clear filtered results when search is empty
+        _filteredMarkets = [];
       }
     });
   }
@@ -60,7 +72,7 @@ class _MarketListScreenState extends State<MarketListScreen> {
     setState(() {
       _searchController.clear();
       _isSearching = false;
-      _filteredMarkets = []; // Clear filtered results
+      _filteredMarkets = [];
       _searchFocusNode.unfocus();
     });
   }
@@ -75,32 +87,14 @@ class _MarketListScreenState extends State<MarketListScreen> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: _isSearching
-            ? TextField(
-                controller: _searchController,
-                focusNode: _searchFocusNode,
-                autofocus: true,
-                decoration: InputDecoration(
-                  hintText: 'Search markets...',
-                  border: InputBorder.none,
-                  hintStyle: TextStyle(color: Colors.white70),
-                  contentPadding: EdgeInsets.zero, // Better alignment
-                ),
-                style: TextStyle(color: Colors.white),
-                onChanged: (value) {
-                  if (value.isEmpty) {
-                    _clearSearch(); // Clear search when field is emptied
-                  }
-                },
-              )
-            : Text(
-                'Market Places',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
+        title: Text(
+          'Market Places',
+          style: TextStyle(
+            fontSize: 24,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 0.5,
+          ),
+        ),
         backgroundColor: theme.primaryColor,
         elevation: 4,
         shadowColor: Colors.black.withOpacity(0.3),
@@ -110,22 +104,6 @@ class _MarketListScreenState extends State<MarketListScreen> {
           ),
         ),
         actions: [
-          AnimatedSwitcher(
-            duration: Duration(milliseconds: 300),
-            child: _isSearching
-                ? IconButton(
-                    icon: Icon(Icons.close, color: Colors.white),
-                    onPressed: _clearSearch,
-                  )
-                : IconButton(
-                    icon: Icon(Icons.search, color: Colors.white),
-                    onPressed: () {
-                      setState(() {
-                        _isSearching = true;
-                      });
-                    },
-                  ),
-          ),
           IconButton(
             icon: Icon(Icons.place, color: Colors.white),
             onPressed: () {
@@ -134,92 +112,113 @@ class _MarketListScreenState extends State<MarketListScreen> {
           ),
         ],
       ),
-      body: AnimatedSwitcher(
-        duration: Duration(milliseconds: 300),
-        child: authProvider.isLoading
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        theme.primaryColor,
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await authProvider.fetchMarkets();
+        },
+        color: theme.primaryColor,
+        child: CustomScrollView(
+          controller: _scrollController,
+          physics: AlwaysScrollableScrollPhysics(),
+          slivers: [
+            // Search Bar Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: SearchBar(
+                  controller: _searchController,
+                  focusNode: _searchFocusNode,
+                  onClearSearch: _clearSearch,
+                  isSearching: _isSearching,
+                ),
+              ),
+            ),
+
+            // Title Section
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Text(
+                  'Available Market Spaces',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
+
+            // Loading Indicator
+            if (authProvider.isLoading)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          theme.primaryColor,
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading Markets...',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[600],
+                      SizedBox(height: 16),
+                      Text(
+                        'Loading Markets...',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.grey[600],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               )
-            : marketsToDisplay.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.store_mall_directory_outlined,
-                          size: 80,
-                          color: Colors.grey[300],
+
+            // Empty State
+            else if (marketsToDisplay.isEmpty)
+              SliverFillRemaining(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.store_mall_directory_outlined,
+                        size: 80,
+                        color: Colors.grey[300],
+                      ),
+                      SizedBox(height: 16),
+                      Text(
+                        _isSearching
+                            ? 'No markets found for "${_searchController.text}"'
+                            : 'No markets available',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.grey[600],
                         ),
-                        SizedBox(height: 16),
-                        Text(
-                          _isSearching
-                              ? 'No markets found for "${_searchController.text}"'
-                              : 'No markets available',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : RefreshIndicator(
-                    onRefresh: () async {
-                      await authProvider.fetchMarkets();
-                    },
-                    color: theme.primaryColor,
-                    child: CustomScrollView(
-                      controller: _scrollController,
-                      physics: AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
-                            child: Text(
-                              'Available Market Spaces',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              final market = marketsToDisplay[index]
-                                  as Map<String, dynamic>;
-                              return AnimatedMarketCard(
-                                market: market,
-                                index: index,
-                              );
-                            },
-                            childCount: marketsToDisplay.length,
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                ),
+              )
+
+            // Market List
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final market = marketsToDisplay[index];
+                    return AnimatedMarketCard(
+                      market: market,
+                      index: index,
+                    );
+                  },
+                  childCount: marketsToDisplay.length,
+                ),
+              ),
+          ],
+        ),
       ),
       floatingActionButton: authProvider.userRole == 'LANDLORD'
           ? FloatingActionButton(
@@ -244,9 +243,72 @@ class _MarketListScreenState extends State<MarketListScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              heroTag: 'addMarketButton', // Add this unique hero tag
+              heroTag: 'addMarketButton',
             )
           : null,
+    );
+  }
+}
+
+// New dedicated SearchBar widget
+class SearchBar extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final Function onClearSearch;
+  final bool isSearching;
+
+  const SearchBar({
+    Key? key,
+    required this.controller,
+    required this.focusNode,
+    required this.onClearSearch,
+    required this.isSearching,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        decoration: InputDecoration(
+          hintText: 'Search markets by name, location or tags...',
+          prefixIcon: Icon(Icons.search, color: Colors.grey[600]),
+          suffixIcon: isSearching
+              ? IconButton(
+                  icon: Icon(Icons.close, color: Colors.grey[600]),
+                  onPressed: () => onClearSearch(),
+                )
+              : null,
+          border: InputBorder.none,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Colors.grey[200]!),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: Theme.of(context).primaryColor),
+          ),
+          contentPadding: EdgeInsets.symmetric(vertical: 16),
+          fillColor: Colors.white,
+          filled: true,
+        ),
+        style: TextStyle(
+          fontSize: 16,
+          color: Colors.grey[800],
+        ),
+      ),
     );
   }
 }
@@ -308,13 +370,8 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
 
   @override
   Widget build(BuildContext context) {
-    print('Market data: ${widget.market}'); // Debug print
-    final tags = widget.market['tags'] != null
-        ? (widget.market['tags'] as List)
-            .map((t) => t['name'] as String)
-            .toList()
-        : <String>[];
-    print('Extracted tags: $tags'); // Debug print
+    // Extract and process tags using the improved TagHelper
+    final tags = TagHelper.extractTags(widget.market);
 
     return AnimatedBuilder(
       animation: _animationController,
@@ -369,12 +426,35 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Image.network(
-                    widget.market['imageUrl'] ??
-                        'https://picsum.photos/400/200',
-                    width: double.infinity,
-                    height: 180,
-                    fit: BoxFit.cover,
+                  Stack(
+                    children: [
+                      Image.network(
+                        widget.market['imageUrl'] ??
+                            'https://picsum.photos/400/200',
+                        width: double.infinity,
+                        height: 180,
+                        fit: BoxFit.cover,
+                      ),
+                      // Gradient overlay for better text visibility if needed
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 60,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.3),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                   Padding(
                     padding: EdgeInsets.all(16),
@@ -389,36 +469,9 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
                           ),
                         ),
                         SizedBox(height: 8),
-                        if (tags.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4.0),
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 4,
-                              children: tags
-                                  .map((tag) => Container(
-                                        padding: EdgeInsets.symmetric(
-                                            horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: Colors.green[50],
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                              color: Colors.green[100]!),
-                                        ),
-                                        child: Text(
-                                          tag,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.green[800],
-                                            fontWeight: FontWeight.w500,
-                                          ),
-                                        ),
-                                      ))
-                                  .toList(),
-                            ),
-                          ),
-                        SizedBox(height: 8),
+                        // Use the MarketTagList widget for tags display
+                        if (tags.isNotEmpty) MarketTagList(tags: tags),
+                        SizedBox(height: 12),
                         Row(
                           children: [
                             Icon(
@@ -427,11 +480,15 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
                               color: Colors.grey[600],
                             ),
                             SizedBox(width: 4),
-                            Text(
-                              widget.market['location'] ?? 'Location',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[600],
+                            Expanded(
+                              child: Text(
+                                widget.market['location'] ?? 'Location',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -446,5 +503,128 @@ class _AnimatedMarketCardState extends State<AnimatedMarketCard>
         ),
       ),
     );
+  }
+}
+
+// Dedicated widget for market tags
+class MarketTagList extends StatelessWidget {
+  final List<MarketTag> tags;
+
+  const MarketTagList({
+    Key? key,
+    required this.tags,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 4,
+      children: tags.map((tag) => MarketTagChip(tag: tag)).toList(),
+    );
+  }
+}
+
+// Tag chip widget
+class MarketTagChip extends StatelessWidget {
+  final MarketTag tag;
+
+  const MarketTagChip({
+    Key? key,
+    required this.tag,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: tag.backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tag.borderColor),
+      ),
+      child: Text(
+        tag.name,
+        style: TextStyle(
+          fontSize: 12,
+          color: tag.textColor,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    );
+  }
+}
+
+// Tag model class
+class MarketTag {
+  final String name;
+  final Color backgroundColor;
+  final Color textColor;
+  final Color borderColor;
+
+  MarketTag({
+    required this.name,
+    required this.backgroundColor,
+    required this.textColor,
+    required this.borderColor,
+  });
+}
+
+// Helper class for tag-related functionality
+class TagHelper {
+  // Extract tags from market data
+  static List<MarketTag> extractTags(Map<String, dynamic> market) {
+    if (market['tags'] == null) return [];
+
+    final rawTags = market['tags'] as List;
+    return rawTags.map((tag) {
+      final name = tag['name'] as String;
+
+      // You can customize tag colors based on category or other properties
+      final tagCategory = tag['category'] as String? ?? 'default';
+
+      return _getTagWithStyle(name, tagCategory);
+    }).toList();
+  }
+
+  // Get styled tag based on category
+  static MarketTag _getTagWithStyle(String name, String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+        return MarketTag(
+          name: name,
+          backgroundColor: Colors.orange[50]!,
+          textColor: Colors.orange[800]!,
+          borderColor: Colors.orange[100]!,
+        );
+      case 'organic':
+        return MarketTag(
+          name: name,
+          backgroundColor: Colors.green[50]!,
+          textColor: Colors.green[800]!,
+          borderColor: Colors.green[100]!,
+        );
+      case 'craft':
+        return MarketTag(
+          name: name,
+          backgroundColor: Colors.purple[50]!,
+          textColor: Colors.purple[800]!,
+          borderColor: Colors.purple[100]!,
+        );
+      case 'specialty':
+        return MarketTag(
+          name: name,
+          backgroundColor: Colors.blue[50]!,
+          textColor: Colors.blue[800]!,
+          borderColor: Colors.blue[100]!,
+        );
+      default:
+        return MarketTag(
+          name: name,
+          backgroundColor: Colors.grey[50]!,
+          textColor: Colors.grey[800]!,
+          borderColor: Colors.grey[200]!,
+        );
+    }
   }
 }
