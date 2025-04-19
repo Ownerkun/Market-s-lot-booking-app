@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
+import 'package:market_lot_app/screen/profile/change_password_screen.dart';
 import 'package:market_lot_app/screen/profile/edit_profile_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
@@ -140,7 +141,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               subtitle: 'Update your account password',
               icon: Icons.lock,
               onTap: () {
-                // Navigate to change password screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChangePasswordScreen(),
+                  ),
+                );
               },
             ),
             _buildActionCard(

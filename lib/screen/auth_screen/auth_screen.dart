@@ -18,7 +18,11 @@ class _AuthScreenState extends State<AuthScreen>
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   String? _selectedRole;
+  String? _userRole;
   DateTime? _birthDate;
+
+  bool get isAdmin => _userRole == 'ADMIN';
+
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
 
@@ -58,35 +62,50 @@ class _AuthScreenState extends State<AuthScreen>
       return;
     }
 
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    if (isLogin) {
-      await authProvider.login(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
-    } else {
-      await authProvider.register(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-        _selectedRole!,
-        _firstNameController.text.trim(),
-        _lastNameController.text.trim(),
-        _birthDate,
-      );
-    }
+      if (isLogin) {
+        await authProvider.login(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
+      } else {
+        if (_selectedRole == 'ADMIN') {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Admin registration not allowed'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
 
-    if (authProvider.errorMessage == null) {
-      Navigator.of(context).pushReplacementNamed('/home');
-    } else {
+        await authProvider.register(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+          _selectedRole!,
+          _firstNameController.text.trim(),
+          _lastNameController.text.trim(),
+          _birthDate,
+        );
+      }
+
+      if (authProvider.errorMessage == null) {
+        Navigator.of(context).pushReplacementNamed('/home');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(authProvider.errorMessage!),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authProvider.errorMessage!),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: Colors.red.shade700,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          margin: EdgeInsets.all(10),
+          content: Text('An error occurred. Please try again.'),
+          backgroundColor: Colors.red,
         ),
       );
     }
@@ -141,6 +160,40 @@ class _AuthScreenState extends State<AuthScreen>
       fillColor: Colors.grey.shade50,
       contentPadding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
     );
+  }
+
+  List<DropdownMenuItem<String>> _buildRoleDropdownItems(BuildContext context) {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final isAdmin = authProvider.isAdmin;
+
+      return [
+        DropdownMenuItem(
+          value: 'TENANT',
+          child: Text('Tenant'),
+        ),
+        DropdownMenuItem(
+          value: 'LANDLORD',
+          child: Text('Landlord'),
+        ),
+        if (isAdmin)
+          DropdownMenuItem(
+            value: 'ADMIN',
+            child: Text('Admin'),
+          ),
+      ];
+    } catch (e) {
+      return [
+        DropdownMenuItem(
+          value: 'TENANT',
+          child: Text('Tenant'),
+        ),
+        DropdownMenuItem(
+          value: 'LANDLORD',
+          child: Text('Landlord'),
+        ),
+      ];
+    }
   }
 
   @override
@@ -378,20 +431,7 @@ class _AuthScreenState extends State<AuthScreen>
                                   value: _selectedRole,
                                   decoration: _buildInputDecoration(
                                       'Role', Icons.assignment_ind),
-                                  items: [
-                                    DropdownMenuItem(
-                                      value: 'TENANT',
-                                      child: Text('Tenant'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'LANDLORD',
-                                      child: Text('Landlord'),
-                                    ),
-                                    DropdownMenuItem(
-                                      value: 'ADMIN',
-                                      child: Text('Admin'),
-                                    ),
-                                  ],
+                                  items: _buildRoleDropdownItems(context),
                                   onChanged: (value) {
                                     setState(() {
                                       _selectedRole = value;

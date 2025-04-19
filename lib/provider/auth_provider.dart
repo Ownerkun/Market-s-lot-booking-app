@@ -22,6 +22,7 @@ class AuthProvider with ChangeNotifier {
   String? get userRole => _userRole;
 
   bool get isLandlord => _userRole == 'LANDLORD';
+  bool get isAdmin => _userRole == 'ADMIN';
 
   String? _userId;
   String? get userId => _userId;
@@ -77,9 +78,6 @@ class AuthProvider with ChangeNotifier {
         }),
       );
 
-      // print('Response status: ${response.statusCode}'); // Debugging
-      // print('Response body: ${response.body}'); // Debugging
-
       if (response.statusCode == 201) {
         final Map<String, dynamic> data = json.decode(response.body);
         if (data.containsKey('data') && data['data'] != null) {
@@ -117,7 +115,6 @@ class AuthProvider with ChangeNotifier {
         }),
       );
 
-      // print('Response status: ${response.statusCode}'); // Debugging
       print('Response body: ${response.body}'); // Debugging
 
       if (response.statusCode == 200) {
@@ -139,10 +136,6 @@ class AuthProvider with ChangeNotifier {
           );
           _userRole = payload['role']; // Extract role from the token payload
           _userId = payload['userId']; // Extract user ID from the token payload
-
-          // print('Decoded token payload: $payload'); // Debugging
-          // print('User Role: $_userRole'); // Debugging
-          // print('User ID: $_userId'); // Debugging
 
           _errorMessage = null;
 
@@ -234,7 +227,6 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> fetchProfile() async {
     if (_userId == null) {
-      // print('User ID is null. Cannot fetch profile.'); //
       return;
     }
 
@@ -274,10 +266,6 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final response = await http.put(url, headers: headers, body: body);
-
-      // print(userId); // Debugging
-      // print('Response status: ${response.statusCode}'); // Debugging
-      // print('Edit Body: ${body}'); // Debugging
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
@@ -399,6 +387,98 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       _errorMessage = e.toString();
       rethrow;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<Map<String, dynamic>> submit({
+    required BuildContext context,
+    required bool isLogin,
+    required String email,
+    required String password,
+    String? selectedRole,
+    String? firstName,
+    String? lastName,
+    DateTime? birthDate,
+  }) async {
+    try {
+      if (isLogin) {
+        await login(email, password);
+      } else {
+        // Prevent non-admin users from registering as admin
+        if (selectedRole == 'ADMIN' && !isAdmin) {
+          return {
+            'success': false,
+            'message': 'You cannot register as an admin'
+          };
+        }
+
+        if (selectedRole == null) {
+          return {'success': false, 'message': 'Please select a role'};
+        }
+
+        await register(
+          email,
+          password,
+          selectedRole,
+          firstName ?? '',
+          lastName ?? '',
+          birthDate,
+        );
+      }
+
+      if (errorMessage == null) {
+        return {'success': true, 'message': null};
+      } else {
+        return {'success': false, 'message': errorMessage};
+      }
+    } catch (e) {
+      return {'success': false, 'message': 'An unexpected error occurred'};
+    }
+  }
+
+  Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final token = await getToken();
+      if (token == null) throw Exception('Authentication required');
+
+      final response = await http.post(
+        Uri.parse('$_baseAuthUrl/change-password'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return {
+          'success': true,
+          'message': 'Password changed successfully',
+        };
+      } else {
+        final Map<String, dynamic> errorData = json.decode(response.body);
+        return {
+          'success': false,
+          'message': errorData['message'] ?? 'Failed to change password',
+        };
+      }
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'An error occurred. Please try again.',
+      };
     } finally {
       _isLoading = false;
       notifyListeners();
