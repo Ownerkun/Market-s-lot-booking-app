@@ -876,7 +876,7 @@ class LotWidget extends StatelessWidget {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      '\$${lot['price'].toStringAsFixed(0)}',
+                      'THB ${lot['price'].toStringAsFixed(0)}',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,

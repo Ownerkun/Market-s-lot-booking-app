@@ -255,13 +255,13 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
               _buildConfirmationRow(
                 Icons.attach_money,
                 'Price per day',
-                '\$${widget.lot['price'].toStringAsFixed(2)}',
+                'THB ${widget.lot['price'].toStringAsFixed(2)}',
               ),
               Divider(),
               _buildConfirmationRow(
                 Icons.summarize,
                 'Total Price',
-                '\$${totalPrice.toStringAsFixed(2)}',
+                'THB ${totalPrice.toStringAsFixed(2)}',
                 isTotal: true,
               ),
             ],
@@ -501,7 +501,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
-                                      '\$${widget.lot['price']}',
+                                      'THB ${widget.lot['price']}',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.bold,
@@ -868,7 +868,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                       ),
                     ),
                     Text(
-                      '\$${totalPrice.toStringAsFixed(2)}',
+                      'THB ${totalPrice.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,

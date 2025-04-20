@@ -160,7 +160,7 @@ class _MarketListViewState extends State<MarketListView> {
                                     size: 16, color: Colors.amber[700]),
                                 SizedBox(width: 4),
                                 Text(
-                                  '\$${lot['price'].toStringAsFixed(2)}',
+                                  'THB ${lot['price'].toStringAsFixed(2)}',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
