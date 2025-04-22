@@ -3,6 +3,8 @@ import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/screen/booking_screen/booking_details.dart';
+// Import the BookingFilter widget
+import 'package:market_lot_app/widgets/booking_filter.dart';
 
 class TenantBookingsPage extends StatefulWidget {
   const TenantBookingsPage({Key? key}) : super(key: key);
@@ -16,8 +18,12 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
       GlobalKey<ScaffoldMessengerState>();
 
   bool _isInitialized = false;
+  bool _isFilterExpanded = false;
+  List<dynamic> _allBookings = [];
   List<dynamic> _activeBookings = [];
   List<dynamic> _historyBookings = [];
+  Map<String, dynamic> _filters = {};
+  List<String> _markets = [];
 
   @override
   void didChangeDependencies() {
@@ -38,7 +44,12 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
 
     bookingProvider.fetchTenantBookings().then((_) {
       if (mounted) {
-        _groupBookings(bookingProvider.bookings);
+        setState(() {
+          _allBookings = bookingProvider.bookings;
+          // Extract unique market names
+          _markets = _extractMarketNames(_allBookings);
+        });
+        _applyFilters();
       }
     }).catchError((error) {
       if (mounted) {
@@ -52,58 +63,134 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
     });
   }
 
-  void _groupBookings(List<dynamic> bookings) {
-    if (!mounted) return;
+  List<String> _extractMarketNames(List<dynamic> bookings) {
+    final Set<String> marketNames = {};
 
-    try {
-      final now = DateTime.now();
-      final active = <dynamic>[];
-      final history = <dynamic>[];
-
-      for (var booking in bookings) {
-        try {
-          final endDate = DateTime.parse(booking['endDate']);
-          final status =
-              booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
-
-          // Include both APPROVED and PENDING in active bookings
-          if (status == 'APPROVED' && endDate.isAfter(now) ||
-              status == 'PENDING') {
-            active.add(booking);
-          } else {
-            history.add(booking);
-          }
-        } catch (e) {
-          print('Error processing booking: $e');
-          continue;
+    for (var booking in bookings) {
+      try {
+        final marketName = booking['lot']?['market']?['name'];
+        if (marketName != null && marketName is String) {
+          marketNames.add(marketName);
         }
+      } catch (e) {
+        print('Error extracting market name: $e');
       }
-
-      // Sort bookings by date (newest first)
-      active.sort((a, b) {
-        final aDate = DateTime.parse(a['startDate']);
-        final bDate = DateTime.parse(b['startDate']);
-        return bDate.compareTo(aDate);
-      });
-
-      history.sort((a, b) {
-        final aDate = DateTime.parse(a['startDate']);
-        final bDate = DateTime.parse(b['startDate']);
-        return bDate.compareTo(aDate);
-      });
-
-      setState(() {
-        _activeBookings = active;
-        _historyBookings = history;
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error processing bookings'),
-          backgroundColor: Colors.red,
-        ),
-      );
     }
+
+    return marketNames.toList()..sort();
+  }
+
+  void _applyFilters() {
+    if (!mounted || _allBookings.isEmpty) return;
+
+    final now = DateTime.now();
+    var filteredBookings = List<dynamic>.from(_allBookings);
+
+    // Apply status filter
+    if (_filters.containsKey('status') && _filters['status'] != null) {
+      filteredBookings = filteredBookings.where((booking) {
+        final status = booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
+        return status == _filters['status'];
+      }).toList();
+    }
+
+    // Apply market filter
+    if (_filters.containsKey('market') && _filters['market'] != null) {
+      filteredBookings = filteredBookings.where((booking) {
+        final marketName = booking['lot']?['market']?['name'] ?? '';
+        return marketName == _filters['market'];
+      }).toList();
+    }
+
+    // Apply date range filter
+    if (_filters.containsKey('startDate') && _filters['startDate'] != null) {
+      final filterStartDate = DateTime(
+        _filters['startDate'].year,
+        _filters['startDate'].month,
+        _filters['startDate'].day,
+      );
+
+      filteredBookings = filteredBookings.where((booking) {
+        try {
+          final bookingEndDate = DateTime.parse(booking['endDate']);
+          return !bookingEndDate.isBefore(filterStartDate);
+        } catch (e) {
+          return false;
+        }
+      }).toList();
+    }
+
+    if (_filters.containsKey('endDate') && _filters['endDate'] != null) {
+      final filterEndDate = DateTime(
+        _filters['endDate'].year,
+        _filters['endDate'].month,
+        _filters['endDate'].day,
+      );
+
+      filteredBookings = filteredBookings.where((booking) {
+        try {
+          final bookingStartDate = DateTime.parse(booking['startDate']);
+          return !bookingStartDate.isAfter(filterEndDate);
+        } catch (e) {
+          return false;
+        }
+      }).toList();
+    }
+
+    // Group filtered bookings
+    final active = <dynamic>[];
+    final history = <dynamic>[];
+
+    for (var booking in filteredBookings) {
+      try {
+        final endDate = DateTime.parse(booking['endDate']);
+        final status = booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
+
+        // Include both APPROVED and PENDING in active bookings
+        if (status == 'APPROVED' && endDate.isAfter(now) ||
+            status == 'PENDING') {
+          active.add(booking);
+        } else {
+          history.add(booking);
+        }
+      } catch (e) {
+        print('Error processing booking: $e');
+        continue;
+      }
+    }
+
+    // Sort bookings by date (newest first)
+    active.sort((a, b) {
+      final aDate = DateTime.parse(a['startDate']);
+      final bDate = DateTime.parse(b['startDate']);
+      return bDate.compareTo(aDate);
+    });
+
+    history.sort((a, b) {
+      final aDate = DateTime.parse(a['startDate']);
+      final bDate = DateTime.parse(b['startDate']);
+      return bDate.compareTo(aDate);
+    });
+
+    setState(() {
+      _activeBookings = active;
+      _historyBookings = history;
+    });
+  }
+
+  void _toggleFilterExpanded() {
+    setState(() {
+      _isFilterExpanded = !_isFilterExpanded;
+    });
+  }
+
+  void _onFilterChanged(Map<String, dynamic> filters) {
+    setState(() {
+      _filters = filters;
+      // Optionally collapse filter after applying
+      _isFilterExpanded = false;
+    });
+    _applyFilters();
   }
 
   Widget _buildBookingCard(dynamic booking, BuildContext context) {
@@ -199,6 +286,13 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
+                  child: Text(
+                    '🔹 Market: $marketName',
+                    style: TextStyle(fontSize: 14, color: Colors.black87),
                   ),
                 ),
                 Padding(
@@ -389,6 +483,9 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
   Widget build(BuildContext context) {
     final bookingProvider = Provider.of<BookingProvider>(context);
 
+    // All possible statuses
+    final statuses = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
+
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -396,6 +493,15 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
           title: Text('My Bookings'),
           backgroundColor: Colors.green,
           elevation: 0,
+          actions: [
+            IconButton(
+              icon: Icon(_isFilterExpanded
+                  ? Icons.filter_list_off
+                  : Icons.filter_list),
+              onPressed: _toggleFilterExpanded,
+              tooltip: 'Filter Bookings',
+            ),
+          ],
           bottom: TabBar(
             tabs: [
               Tab(text: 'Active Bookings'),
@@ -403,45 +509,115 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            // Active Bookings Tab
-            bookingProvider.isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _activeBookings.isEmpty
-                    ? _buildEmptyState('No active or pending bookings')
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await bookingProvider.fetchTenantBookings();
-                          _groupBookings(bookingProvider.bookings);
-                        },
-                        child: ListView.builder(
-                          itemCount: _activeBookings.length,
-                          itemBuilder: (context, index) {
-                            return _buildBookingCard(
-                                _activeBookings[index], context);
-                          },
+            // Filter Section
+            AnimatedContainer(
+              duration: Duration(milliseconds: 300),
+              height: _isFilterExpanded ? null : 0,
+              child: SingleChildScrollView(
+                child: _isFilterExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: BookingFilter(
+                          statuses: statuses,
+                          markets: _markets,
+                          initialFilters: _filters,
+                          onFilterChanged: _onFilterChanged,
                         ),
-                      ),
+                      )
+                    : SizedBox.shrink(),
+              ),
+            ),
 
-            // Booking History Tab
-            bookingProvider.isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _historyBookings.isEmpty
-                    ? _buildEmptyState('No past bookings')
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await bookingProvider.fetchTenantBookings();
-                          _groupBookings(bookingProvider.bookings);
-                        },
-                        child: ListView.builder(
-                          itemCount: _historyBookings.length,
-                          itemBuilder: (context, index) {
-                            return _buildBookingCard(
-                                _historyBookings[index], context);
-                          },
-                        ),
+            // Active Filter Indicators
+            if (_filters.isNotEmpty)
+              Container(
+                color: Colors.grey.shade100,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.filter_alt, size: 16, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text(
+                      'Filters Applied: ${_filters.length}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
                       ),
+                    ),
+                    Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _filters = {};
+                        });
+                        _applyFilters();
+                      },
+                      child: Text('Clear All'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            // Booking Lists
+            Expanded(
+              child: TabBarView(
+                children: [
+                  // Active Bookings Tab
+                  bookingProvider.isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : _activeBookings.isEmpty
+                          ? _buildEmptyState('No active or pending bookings')
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                await bookingProvider.fetchTenantBookings();
+                                setState(() {
+                                  _allBookings = bookingProvider.bookings;
+                                  // Extract unique market names
+                                  _markets = _extractMarketNames(_allBookings);
+                                });
+                                _applyFilters();
+                              },
+                              child: ListView.builder(
+                                itemCount: _activeBookings.length,
+                                itemBuilder: (context, index) {
+                                  return _buildBookingCard(
+                                      _activeBookings[index], context);
+                                },
+                              ),
+                            ),
+
+                  // Booking History Tab
+                  bookingProvider.isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : _historyBookings.isEmpty
+                          ? _buildEmptyState('No past bookings')
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                await bookingProvider.fetchTenantBookings();
+                                setState(() {
+                                  _allBookings = bookingProvider.bookings;
+                                  // Extract unique market names
+                                  _markets = _extractMarketNames(_allBookings);
+                                });
+                                _applyFilters();
+                              },
+                              child: ListView.builder(
+                                itemCount: _historyBookings.length,
+                                itemBuilder: (context, index) {
+                                  return _buildBookingCard(
+                                      _historyBookings[index], context);
+                                },
+                              ),
+                            ),
+                ],
+              ),
+            ),
           ],
         ),
       ),

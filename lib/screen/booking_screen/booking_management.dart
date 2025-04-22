@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/screen/booking_screen/booking_details.dart';
+import 'package:market_lot_app/widgets/booking_filter.dart';
 
 class LandlordBookingsPage extends StatefulWidget {
   const LandlordBookingsPage({Key? key}) : super(key: key);
@@ -18,8 +19,12 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
 
   bool _isInitialized = false;
   bool _isUpdating = false;
+  bool _isFilterExpanded = false;
+  Map<String, dynamic> _filters = {};
+  List<dynamic> _allBookings = [];
   Map<String, List<dynamic>> _pendingBookingsByMarket = {};
   Map<String, List<dynamic>> _historyBookingsByMarket = {};
+  List<String> _markets = [];
 
   @override
   void didChangeDependencies() {
@@ -40,8 +45,11 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
 
     bookingProvider.fetchLandlordBookings().then((_) {
       if (mounted) {
-        print('Full booking data: ${jsonEncode(bookingProvider.bookings)}');
-        _groupBookingsByMarket(bookingProvider.bookings);
+        setState(() {
+          _allBookings = bookingProvider.bookings;
+          _markets = _extractMarketNames(_allBookings);
+        });
+        _applyFilters();
       }
     }).catchError((error) {
       if (mounted) {
@@ -56,14 +64,31 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     });
   }
 
-  void _groupBookingsByMarket(List<dynamic> bookings) {
+  List<String> _extractMarketNames(List<dynamic> bookings) {
+    final Set<String> marketNames = {};
+
+    for (var booking in bookings) {
+      try {
+        final marketName = booking['lot']?['market']?['name'];
+        if (marketName != null && marketName is String) {
+          marketNames.add(marketName);
+        }
+      } catch (e) {
+        print('Error extracting market name: $e');
+      }
+    }
+
+    return marketNames.toList()..sort();
+  }
+
+  void _applyFilters() {
     if (!mounted) return;
 
     try {
       final pending = <String, List<dynamic>>{};
       final history = <String, List<dynamic>>{};
 
-      for (var booking in bookings) {
+      for (var booking in _allBookings) {
         try {
           final lot = booking['lot'] as Map<String, dynamic>?;
           if (lot == null) {
@@ -78,12 +103,23 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           final status =
               booking['status']?.toString().toUpperCase() ?? 'UNKNOWN';
 
+          if (_filters.isNotEmpty) {
+            if (_filters.containsKey('status') &&
+                _filters['status'] != status) {
+              continue;
+            }
+            if (_filters.containsKey('market') &&
+                _filters['market'] != marketName) {
+              continue;
+            }
+          }
+
           final bookingWithDates = {
             ...booking,
             'marketName': marketName,
             'startDate': booking['startDate'],
             'endDate': booking['endDate'],
-            'processedAt': DateTime.now().toIso8601String(), // For debugging
+            'processedAt': DateTime.now().toIso8601String(),
           };
 
           switch (status) {
@@ -97,16 +133,15 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
         } catch (e, stackTrace) {
           print('Error processing booking: $e');
           print('Stack trace: $stackTrace');
-          continue; // Skip this booking but continue processing others
+          continue;
         }
       }
 
-      // Sort bookings by date
       for (var marketBookings in [...pending.values, ...history.values]) {
         marketBookings.sort((a, b) {
           final aDate = DateTime.parse(a['startDate']);
           final bDate = DateTime.parse(a['startDate']);
-          return bDate.compareTo(aDate); // Most recent first
+          return bDate.compareTo(aDate);
         });
       }
 
@@ -124,6 +159,20 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
         ),
       );
     }
+  }
+
+  void _toggleFilterExpanded() {
+    setState(() {
+      _isFilterExpanded = !_isFilterExpanded;
+    });
+  }
+
+  void _onFilterChanged(Map<String, dynamic> filters) {
+    setState(() {
+      _filters = filters;
+      _isFilterExpanded = false;
+    });
+    _applyFilters();
   }
 
   Widget _buildBookingCard(dynamic booking, BuildContext context) {
@@ -420,7 +469,6 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           ),
         );
 
-        // Refresh data
         await bookingProvider.fetchLandlordBookings();
 
         final booking = bookingProvider.bookings.firstWhere(
@@ -435,7 +483,11 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           );
         }
 
-        _groupBookingsByMarket(bookingProvider.bookings);
+        setState(() {
+          _allBookings = bookingProvider.bookings;
+          _markets = _extractMarketNames(_allBookings);
+        });
+        _applyFilters();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -457,7 +509,6 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
     }
   }
 
-  // Add this helper method to get appropriate status colors
   Color _getStatusColor(String status) {
     switch (status) {
       case 'APPROVED':
@@ -533,6 +584,7 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
   @override
   Widget build(BuildContext context) {
     final bookingProvider = Provider.of<BookingProvider>(context);
+    final statuses = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
 
     return DefaultTabController(
       length: 2,
@@ -541,6 +593,15 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
           title: Text('Booking Management'),
           backgroundColor: Colors.green,
           elevation: 0,
+          actions: [
+            IconButton(
+              icon: Icon(_isFilterExpanded
+                  ? Icons.filter_list_off
+                  : Icons.filter_list),
+              onPressed: _toggleFilterExpanded,
+              tooltip: 'Filter Bookings',
+            ),
+          ],
           bottom: TabBar(
             tabs: [
               Tab(text: 'Pending Requests'),
@@ -548,33 +609,95 @@ class _LandlordBookingsPageState extends State<LandlordBookingsPage> {
             ],
           ),
         ),
-        body: TabBarView(
+        body: Column(
           children: [
-            // Pending Requests Tab
-            bookingProvider.isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _pendingBookingsByMarket.isEmpty
-                    ? _buildEmptyState('No pending booking requests')
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await bookingProvider.fetchLandlordBookings();
-                          _groupBookingsByMarket(bookingProvider.bookings);
-                        },
-                        child: _buildBookingsList(_pendingBookingsByMarket),
+            AnimatedContainer(
+              duration: Duration(milliseconds: 300),
+              height: _isFilterExpanded ? null : 0,
+              child: SingleChildScrollView(
+                child: _isFilterExpanded
+                    ? Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: BookingFilter(
+                          statuses: statuses,
+                          markets: _markets,
+                          initialFilters: _filters,
+                          onFilterChanged: _onFilterChanged,
+                        ),
+                      )
+                    : SizedBox.shrink(),
+              ),
+            ),
+            if (_filters.isNotEmpty)
+              Container(
+                color: Colors.grey.shade100,
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.filter_alt, size: 16, color: Colors.green),
+                    SizedBox(width: 8),
+                    Text(
+                      'Filters Applied: ${_filters.length}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green,
                       ),
-
-            // Booking History Tab
-            bookingProvider.isLoading
-                ? Center(child: CircularProgressIndicator())
-                : _historyBookingsByMarket.isEmpty
-                    ? _buildEmptyState('No booking history yet')
-                    : RefreshIndicator(
-                        onRefresh: () async {
-                          await bookingProvider.fetchLandlordBookings();
-                          _groupBookingsByMarket(bookingProvider.bookings);
-                        },
-                        child: _buildBookingsList(_historyBookingsByMarket),
+                    ),
+                    Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _filters = {};
+                        });
+                        _applyFilters();
+                      },
+                      child: Text('Clear All'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        padding: EdgeInsets.symmetric(horizontal: 8),
                       ),
+                    ),
+                  ],
+                ),
+              ),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  bookingProvider.isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : _pendingBookingsByMarket.isEmpty
+                          ? _buildEmptyState('No pending booking requests')
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                await bookingProvider.fetchLandlordBookings();
+                                setState(() {
+                                  _allBookings = bookingProvider.bookings;
+                                  _markets = _extractMarketNames(_allBookings);
+                                });
+                                _applyFilters();
+                              },
+                              child:
+                                  _buildBookingsList(_pendingBookingsByMarket),
+                            ),
+                  bookingProvider.isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : _historyBookingsByMarket.isEmpty
+                          ? _buildEmptyState('No booking history yet')
+                          : RefreshIndicator(
+                              onRefresh: () async {
+                                await bookingProvider.fetchLandlordBookings();
+                                setState(() {
+                                  _allBookings = bookingProvider.bookings;
+                                  _markets = _extractMarketNames(_allBookings);
+                                });
+                                _applyFilters();
+                              },
+                              child:
+                                  _buildBookingsList(_historyBookingsByMarket),
+                            ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
