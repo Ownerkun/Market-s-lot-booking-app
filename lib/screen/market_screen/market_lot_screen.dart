@@ -52,22 +52,27 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
     final isLandlord = authProvider.userRole == 'LANDLORD';
 
     if (marketProvider.isLoading) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
-            ),
-            SizedBox(height: 16),
-            Text(
-              'Loading market layout...',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 16,
+      return Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.green[600]!),
+                strokeWidth: 3,
               ),
-            ),
-          ],
+              SizedBox(height: 20),
+              Text(
+                'Loading market layout...',
+                style: TextStyle(
+                  color: Colors.green[800],
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -78,14 +83,17 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
           marketProvider.marketInfo != null
               ? '${marketProvider.marketInfo!['name']} Layout'
               : 'Market Layout',
-          style: TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 18,
+          ),
         ),
-        backgroundColor: Color(0xFFC0F8C0),
+        backgroundColor: Colors.green,
+        elevation: 0,
         actions: [
-          // Request Management Icon (for landlords)
           if (isLandlord)
             IconButton(
-              icon: Icon(Icons.request_page), // Icon for request management
+              icon: Icon(Icons.request_page),
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(
@@ -94,11 +102,9 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
                 );
               },
             ),
-          // Toggle between List and Map View
           IconButton(
             icon: Icon(
               _isListView ? Icons.map_outlined : Icons.list,
-              color: Colors.black87,
             ),
             onPressed: () {
               setState(() {
@@ -110,16 +116,33 @@ class _MarketLayoutScreenState extends State<MarketLayoutScreen>
           ),
         ],
       ),
-      body: FadeTransition(
-        opacity: _fadeAnimation,
-        child: _isListView ? MarketListView() : MarketMapView(),
+      body: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey[50],
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(20),
+            topRight: Radius.circular(20),
+          ),
+        ),
+        child: AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: FadeTransition(
+            key: ValueKey(_isListView),
+            opacity: _fadeAnimation,
+            child: _isListView ? MarketListView() : MarketMapView(),
+          ),
+        ),
       ),
       floatingActionButton: isLandlord
           ? FloatingActionButton.extended(
               onPressed: () => marketProvider.addLot(context),
-              label: Text(_isListView ? 'Add Lot' : 'Add Space'),
+              label: Text(
+                _isListView ? 'Add Lot' : 'Add Space',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               icon: Icon(Icons.add),
-              backgroundColor: Colors.green,
+              backgroundColor: Colors.green[600],
+              elevation: 4,
               heroTag: 'addLotButton',
             )
           : null,

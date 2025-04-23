@@ -55,6 +55,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
     try {
       setState(() => _isLoading = true);
       await _bookingProvider.loadBookedDatesForLot(widget.lot['id'], month);
+      // Don't update _focusedDay here - it's being set by _onPageChanged or the calendar itself
     } catch (e) {
       print('Error loading booked dates: $e');
       _showErrorMessage('Failed to load availability');
@@ -220,97 +221,212 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (BuildContext context) {
-        return AlertDialog(
+        return Dialog(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(24),
           ),
-          title: Row(
-            children: [
-              Icon(Icons.shopping_cart_checkout, color: Colors.green),
-              SizedBox(width: 8),
-              Text('Confirm Booking'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Booking Details:',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              SizedBox(height: 16),
-              _buildConfirmationRow(Icons.store, 'Lot', widget.lot['name']),
-              SizedBox(height: 8),
-              _buildConfirmationRow(
-                Icons.calendar_today,
-                'Dates',
-                '${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d').format(dateRange.end)}',
-              ),
-              SizedBox(height: 8),
-              _buildConfirmationRow(
-                Icons.timer,
-                'Duration',
-                '$duration day${duration > 1 ? 's' : ''}',
-              ),
-              SizedBox(height: 8),
-              _buildConfirmationRow(
-                Icons.attach_money,
-                'Price per day',
-                'THB ${widget.lot['price'].toStringAsFixed(2)}',
-              ),
-              Divider(),
-              _buildConfirmationRow(
-                Icons.summarize,
-                'Total Price',
-                'THB ${totalPrice.toStringAsFixed(2)}',
-                isTotal: true,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Cancel', style: TextStyle(color: Colors.grey[600])),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _bookLot(dateRange);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+          elevation: 8,
+          backgroundColor: Colors.white,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Stack(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.symmetric(vertical: 20),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(24),
+                          topRight: Radius.circular(24),
+                        ),
+                      ),
+                      child: Center(
+                        child: Column(
+                          children: [
+                            Icon(
+                              Icons.shopping_cart_checkout,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                            SizedBox(height: 12),
+                            Text(
+                              'Confirm Booking',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: IconButton(
+                        icon: Icon(Icons.close, color: Colors.white),
+                        onPressed: () => Navigator.of(context).pop(),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              child: Text('Confirm Booking'),
+                Container(
+                  padding: EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Booking Summary',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87,
+                        ),
+                      ),
+                      SizedBox(height: 24),
+                      _buildBookingSummaryCard(
+                        dateRange: dateRange,
+                        duration: duration,
+                        totalPrice: totalPrice,
+                      ),
+                      SizedBox(height: 24),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.grey[600],
+                                side: BorderSide(color: Colors.grey[300]!),
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Text('Cancel'),
+                            ),
+                          ),
+                          SizedBox(width: 16),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                                _bookLot(dateRange);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 2,
+                              ),
+                              child: Text(
+                                'Confirm Booking',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
   }
 
-  Widget _buildConfirmationRow(IconData icon, String label, String value,
+  Widget _buildBookingSummaryCard({
+    required DateTimeRange dateRange,
+    required int duration,
+    required num totalPrice,
+  }) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Column(
+        children: [
+          _buildSummaryRow(
+            Icons.store,
+            'Lot',
+            widget.lot['name'],
+          ),
+          Divider(height: 24),
+          _buildSummaryRow(
+            Icons.calendar_today,
+            'Dates',
+            '${DateFormat('MMM d').format(dateRange.start)} - ${DateFormat('MMM d').format(dateRange.end)}',
+          ),
+          Divider(height: 24),
+          _buildSummaryRow(
+            Icons.timer,
+            'Duration',
+            '$duration day${duration > 1 ? 's' : ''}',
+          ),
+          Divider(height: 24),
+          _buildSummaryRow(
+            Icons.attach_money,
+            'Price per day',
+            'THB ${widget.lot['price'].toStringAsFixed(2)}',
+          ),
+          SizedBox(height: 16),
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: _buildSummaryRow(
+              Icons.summarize,
+              'Total Price',
+              'THB ${totalPrice.toStringAsFixed(2)}',
+              isTotal: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(IconData icon, String label, String value,
       {bool isTotal = false}) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: Colors.green),
-        SizedBox(width: 8),
+        Icon(
+          icon,
+          size: 20,
+          color: isTotal ? Theme.of(context).primaryColor : Colors.grey[600],
+        ),
+        SizedBox(width: 12),
         Text(
           '$label:',
           style: TextStyle(
-            color: Colors.grey[600],
             fontSize: 14,
+            color: Colors.grey[600],
           ),
         ),
         Spacer(),
         Text(
           value,
           style: TextStyle(
-            fontWeight: isTotal ? FontWeight.bold : FontWeight.normal,
-            fontSize: isTotal ? 16 : 14,
-            color: isTotal ? Colors.green : Colors.black87,
+            fontSize: isTotal ? 18 : 14,
+            fontWeight: isTotal ? FontWeight.bold : FontWeight.w500,
+            color: isTotal ? Theme.of(context).primaryColor : Colors.black87,
           ),
         ),
       ],
@@ -376,44 +492,394 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
     );
   }
 
-  // Update the TableCalendar configuration to use these methods
   Widget _buildCalendar() {
     return Consumer<BookingProvider>(
       builder: (context, bookingProvider, child) {
-        return TableCalendar(
-          firstDay: DateTime.now(),
-          lastDay: DateTime.now().add(Duration(days: 365)),
-          focusedDay: _focusedDay,
-          rangeStartDay: _rangeStart,
-          rangeEndDay: _rangeEnd,
-          calendarFormat: CalendarFormat.month,
-          rangeSelectionMode: RangeSelectionMode.enforced,
-          onPageChanged: _loadBookedDates,
-          onRangeSelected: _handleRangeSelection,
-          enabledDayPredicate: _isDateAvailable,
-          calendarStyle: CalendarStyle(
-            todayDecoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.3),
-              shape: BoxShape.circle,
-            ),
-            rangeStartDecoration: BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
-            ),
-            rangeEndDecoration: BoxDecoration(
-              color: Colors.green,
-              shape: BoxShape.circle,
-            ),
-            withinRangeTextStyle: TextStyle(
-              color: Colors.black,
-            ),
-            rangeHighlightColor: Colors.green.withOpacity(0.1),
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade200),
           ),
-          calendarBuilders: CalendarBuilders(
-            markerBuilder: _buildDateMarker,
+          child: Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: ColorScheme.light(
+                primary: Theme.of(context).primaryColor,
+                onPrimary: Colors.white,
+                surface: Colors.white,
+                onSurface: Colors.black87,
+              ),
+            ),
+            child: TableCalendar(
+              firstDay: DateTime.now(),
+              lastDay: DateTime.now().add(Duration(days: 365)),
+              focusedDay: _focusedDay,
+              rangeStartDay: _rangeStart,
+              rangeEndDay: _rangeEnd,
+              calendarFormat: CalendarFormat.month,
+              rangeSelectionMode: RangeSelectionMode.enforced,
+              onPageChanged: _onPageChanged,
+              onRangeSelected: _handleRangeSelection,
+              enabledDayPredicate: _isDateAvailable,
+              headerStyle: HeaderStyle(
+                titleCentered: true,
+                formatButtonVisible: false,
+                titleTextStyle: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+                leftChevronIcon: Icon(
+                  Icons.chevron_left,
+                  color: Theme.of(context).primaryColor,
+                ),
+                rightChevronIcon: Icon(
+                  Icons.chevron_right,
+                  color: Theme.of(context).primaryColor,
+                ),
+              ),
+              calendarStyle: CalendarStyle(
+                todayDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor.withOpacity(0.3),
+                  shape: BoxShape.circle,
+                ),
+                rangeStartDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                rangeEndDecoration: BoxDecoration(
+                  color: Theme.of(context).primaryColor,
+                  shape: BoxShape.circle,
+                ),
+                withinRangeTextStyle: TextStyle(
+                  color: Colors.black87,
+                ),
+                rangeHighlightColor:
+                    Theme.of(context).primaryColor.withOpacity(0.1),
+                selectedTextStyle: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+                outsideTextStyle: TextStyle(color: Colors.grey.shade400),
+                weekendTextStyle: TextStyle(color: Colors.black87),
+              ),
+              calendarBuilders: CalendarBuilders(
+                markerBuilder: _buildDateMarker,
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildCalendarLegend() {
+    return Container(
+      margin: EdgeInsets.symmetric(vertical: 16),
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildLegendItem(Theme.of(context).primaryColor, 'Selected'),
+          _buildLegendItem(Colors.red, 'Booked'),
+          _buildLegendItem(Colors.orange, 'Pending'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLegendItem(Color color, String label) {
+    return Row(
+      children: [
+        Container(
+          width: 16,
+          height: 16,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.4),
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey[700],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBookingButton() {
+    final bool canBook = _selectedDateRange != null &&
+        widget.lot['available'] &&
+        !widget.isLandlord &&
+        !_isLoading;
+
+    final num totalPrice = _selectedDateRange != null
+        ? (_selectedDateRange!.start.year == _selectedDateRange!.end.year &&
+                _selectedDateRange!.start.month ==
+                    _selectedDateRange!.end.month &&
+                _selectedDateRange!.start.day == _selectedDateRange!.end.day
+            ? widget.lot['price']
+            : (_selectedDateRange!.duration.inDays + 1) * widget.lot['price'])
+        : 0.0;
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_selectedDateRange != null)
+            Container(
+              padding: EdgeInsets.all(16),
+              margin: EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade50,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Total Price',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            'THB ${totalPrice.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Container(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).primaryColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: 16,
+                              color: Theme.of(context).primaryColor,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              _selectedDateRange!.start ==
+                                      _selectedDateRange!.end
+                                  ? '1 day'
+                                  : '${_selectedDateRange!.duration.inDays + 1} days',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context).primaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (_selectedDateRange != null) ...[
+                    SizedBox(height: 12),
+                    Container(
+                      padding: EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.date_range,
+                              color: Theme.of(context).primaryColor, size: 16),
+                          SizedBox(width: 8),
+                          Text(
+                            _selectedDateRange!.start == _selectedDateRange!.end
+                                ? DateFormat('MMMM d, yyyy')
+                                    .format(_selectedDateRange!.start)
+                                : '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.grey[800],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          SafeArea(
+            child: ElevatedButton(
+              onPressed: canBook
+                  ? () => _showBookingConfirmation(_selectedDateRange!)
+                  : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                disabledBackgroundColor: Colors.grey[300],
+                foregroundColor: Colors.white,
+                minimumSize: Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                elevation: canBook ? 2 : 0,
+              ),
+              child: _isLoading
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Processing...',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          canBook
+                              ? Icons.shopping_cart_checkout
+                              : Icons.date_range,
+                          size: 24,
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          canBook ? 'Confirm Booking' : 'Select dates to book',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPriceTag() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).primaryColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.attach_money, color: Colors.white, size: 18),
+          SizedBox(width: 4),
+          Text(
+            'THB ${widget.lot['price']}',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityTag() {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: widget.lot['available'] ? Colors.green : Colors.red.shade400,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black26,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            widget.lot['available']
+                ? Icons.check_circle
+                : Icons.cancel_outlined,
+            color: Colors.white,
+            size: 18,
+          ),
+          SizedBox(width: 4),
+          Text(
+            widget.lot['available'] ? 'Available' : 'Not Available',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -424,42 +890,39 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
           ? Center(child: CircularProgressIndicator())
           : CustomScrollView(
               slivers: [
-                // App Bar with image background
                 SliverAppBar(
-                  expandedHeight: MediaQuery.of(context).size.height * 0.35,
+                  expandedHeight: MediaQuery.of(context).size.height * 0.3,
                   floating: false,
                   pinned: true,
-                  backgroundColor: Colors.green,
+                  backgroundColor: Theme.of(context).primaryColor,
+                  elevation: 0,
                   actions: [
                     if (widget.isLandlord)
                       IconButton(
                         icon: Icon(Icons.edit, color: Colors.white),
-                        onPressed: () {
-                          _showEditLotDialog(context, widget.lot);
-                        },
+                        onPressed: () =>
+                            _showEditLotDialog(context, widget.lot),
                       ),
                   ],
                   flexibleSpace: FlexibleSpaceBar(
                     background: Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.network(
-                          'https://picsum.photos/800/600',
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: Colors.grey[300],
-                              child: Center(
-                                child: Icon(
-                                  Icons.error,
-                                  color: Colors.red,
-                                  size: 50,
-                                ),
-                              ),
-                            );
-                          },
+                        Hero(
+                          tag: 'lot_${widget.lot['id']}',
+                          child: FadeInImage.assetNetwork(
+                            placeholder: 'assets/images/placeholder.png',
+                            image: 'https://picsum.photos/800/600',
+                            fit: BoxFit.cover,
+                            imageErrorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.grey[200],
+                                child: Icon(Icons.image_not_supported,
+                                    color: Colors.grey[400], size: 60),
+                              );
+                            },
+                          ),
                         ),
-                        // Gradient overlay
                         Container(
                           decoration: BoxDecoration(
                             gradient: LinearGradient(
@@ -467,71 +930,42 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                               end: Alignment.bottomCenter,
                               colors: [
                                 Colors.transparent,
-                                Colors.black.withOpacity(0.7),
+                                Colors.black.withOpacity(0.5),
+                                Colors.black.withOpacity(0.8),
                               ],
+                              stops: [0.6, 0.8, 1.0],
                             ),
                           ),
                         ),
-                        // Lot name and price
                         Positioned(
-                          left: 16,
-                          right: 16,
-                          bottom: 16,
+                          left: 20,
+                          right: 20,
+                          bottom: 20,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
                                 widget.lot['name'],
                                 style: TextStyle(
-                                  fontSize: 24,
+                                  fontSize: 26,
                                   fontWeight: FontWeight.bold,
                                   color: Colors.white,
+                                  letterSpacing: 0.3,
+                                  shadows: [
+                                    Shadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 3,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              SizedBox(height: 8),
+                              SizedBox(height: 10),
                               Row(
                                 children: [
-                                  Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      'THB ${widget.lot['price']}',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 10),
-                                  Container(
-                                    padding: EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: widget.lot['available']
-                                          ? Colors.green
-                                          : Colors.red,
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      widget.lot['available']
-                                          ? 'Available'
-                                          : 'Not Available',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
+                                  _buildPriceTag(),
+                                  SizedBox(width: 12),
+                                  _buildAvailabilityTag(),
                                 ],
                               ),
                             ],
@@ -541,8 +975,6 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                     ),
                   ),
                 ),
-
-                // Lot details content
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -607,21 +1039,6 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
               ],
             ),
       bottomNavigationBar: _buildBookingButton(),
-    );
-  }
-
-  Widget _buildCalendarLegend() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        children: [
-          _buildLegendItem(Colors.green, 'Selected'),
-          SizedBox(width: 16),
-          _buildLegendItem(Colors.red, 'Booked'),
-          SizedBox(width: 16),
-          _buildLegendItem(Colors.orange, 'Pending'),
-        ],
-      ),
     );
   }
 
@@ -736,12 +1153,29 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        color: Colors.black87,
+    return Padding(
+      padding: const EdgeInsets.only(left: 2.0, bottom: 12.0, top: 8.0),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(width: 10),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.3,
+              color: Colors.black87,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -749,15 +1183,15 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
   Widget _buildInfoCard({required Widget child}) {
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 5),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: Offset(0, 3),
           ),
         ],
       ),
@@ -767,10 +1201,17 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
 
   Widget _buildFeatureRow(IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
       child: Row(
         children: [
-          Icon(icon, color: Colors.green, size: 24),
+          Container(
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: Theme.of(context).primaryColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: Theme.of(context).primaryColor, size: 24),
+          ),
           SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -781,6 +1222,7 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey[600],
+                    letterSpacing: 0.2,
                   ),
                 ),
                 SizedBox(height: 4),
@@ -788,154 +1230,14 @@ class _LotDetailsScreenState extends State<LotDetailsScreen> {
                   value,
                   style: TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.3,
                   ),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildLegendItem(Color color, String label) {
-    return Row(
-      children: [
-        Container(
-          width: 16,
-          height: 16,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        SizedBox(width: 8),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey[600],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildBookingButton() {
-    final bool canBook = _selectedDateRange != null &&
-        widget.lot['available'] &&
-        !widget.isLandlord &&
-        !_isLoading;
-
-    // Calculate total price considering one-day bookings
-    final num totalPrice = _selectedDateRange != null
-        ? (_selectedDateRange!.start.year == _selectedDateRange!.end.year &&
-                _selectedDateRange!.start.month ==
-                    _selectedDateRange!.end.month &&
-                _selectedDateRange!.start.day == _selectedDateRange!.end.day
-            ? widget.lot['price'] // Single day price
-            : (_selectedDateRange!.duration.inDays + 1) * widget.lot['price'])
-        : 0.0;
-
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 15,
-            offset: Offset(0, -4),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (_selectedDateRange != null)
-              Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Total Price:',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    Text(
-                      'THB ${totalPrice.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ElevatedButton(
-              onPressed: canBook
-                  ? () => _showBookingConfirmation(_selectedDateRange!)
-                  : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                disabledBackgroundColor: Colors.grey[300],
-                foregroundColor: Colors.white,
-                minimumSize: Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: canBook ? 2 : 0,
-              ),
-              child: _isLoading
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Processing...',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.calendar_today),
-                        SizedBox(width: 12),
-                        Text(
-                          _selectedDateRange != null
-                              ? _selectedDateRange!.start ==
-                                      _selectedDateRange!.end
-                                  ? 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)}'
-                                  : 'Book ${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
-                              : 'Select dates to book',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-            ),
-          ],
-        ),
       ),
     );
   }

@@ -3,8 +3,9 @@ import 'package:intl/intl.dart';
 import 'package:market_lot_app/provider/booking_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/screen/booking_screen/booking_details.dart';
-// Import the BookingFilter widget
 import 'package:market_lot_app/widgets/booking_filter.dart';
+import 'package:market_lot_app/utils/map_helpers.dart';
+import 'package:focus_detector/focus_detector.dart';
 
 class TenantBookingsPage extends StatefulWidget {
   const TenantBookingsPage({Key? key}) : super(key: key);
@@ -19,6 +20,7 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
 
   bool _isInitialized = false;
   bool _isFilterExpanded = false;
+  bool _isLoading = false;
   List<dynamic> _allBookings = [];
   List<dynamic> _activeBookings = [];
   List<dynamic> _historyBookings = [];
@@ -30,29 +32,34 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
     super.didChangeDependencies();
     if (!_isInitialized) {
       _isInitialized = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _fetchAndGroupBookings();
-        }
-      });
+      _fetchAndGroupBookings();
     }
   }
 
-  void _fetchAndGroupBookings() {
+  Future<void> _fetchAndGroupBookings() async {
     final bookingProvider =
         Provider.of<BookingProvider>(context, listen: false);
 
-    bookingProvider.fetchTenantBookings().then((_) {
+    try {
+      setState(() {
+        _isLoading = true;
+      });
+
+      await bookingProvider.fetchTenantBookings();
+
       if (mounted) {
         setState(() {
           _allBookings = bookingProvider.bookings;
-          // Extract unique market names
           _markets = _extractMarketNames(_allBookings);
+          _isLoading = false;
         });
         _applyFilters();
       }
-    }).catchError((error) {
+    } catch (error) {
       if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to load bookings: ${error.toString()}'),
@@ -60,7 +67,7 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
           ),
         );
       }
-    });
+    }
   }
 
   List<String> _extractMarketNames(List<dynamic> bookings) {
@@ -168,7 +175,7 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
 
     history.sort((a, b) {
       final aDate = DateTime.parse(a['startDate']);
-      final bDate = DateTime.parse(b['startDate']);
+      final bDate = DateTime.parse(a['startDate']);
       return bDate.compareTo(aDate);
     });
 
@@ -176,6 +183,95 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
       _activeBookings = active;
       _historyBookings = history;
     });
+  }
+
+  Map<String, List<dynamic>> _groupBookingsByMarket(List<dynamic> bookings) {
+    final Map<String, List<dynamic>> grouped = {};
+
+    for (var booking in bookings) {
+      final marketId = booking['lot']?['market']?['id'] ?? 'unknown';
+      if (!grouped.containsKey(marketId)) {
+        grouped[marketId] = [];
+      }
+      grouped[marketId]!.add({
+        ...booking,
+        'marketName': booking['lot']?['market']?['name'] ?? 'Unknown Market',
+      });
+    }
+
+    return Map.fromEntries(
+      grouped.entries.toList()
+        ..sort((a, b) =>
+            a.value.first['marketName'].compareTo(b.value.first['marketName'])),
+    );
+  }
+
+  Widget _buildBookingsList(Map<String, List<dynamic>> bookingsMap) {
+    return ListView.builder(
+      padding: EdgeInsets.only(top: 8, bottom: 16),
+      itemCount: bookingsMap.length,
+      itemBuilder: (context, marketIndex) {
+        final marketId = bookingsMap.keys.elementAt(marketIndex);
+        final marketBookings = bookingsMap[marketId]!;
+        final marketName = marketBookings.first['marketName'];
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.green.shade700, Colors.green.shade500],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.2),
+                    offset: Offset(0, 2),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.store, color: Colors.white, size: 22),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      marketName,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  Text(
+                    '${marketBookings.length} booking${marketBookings.length > 1 ? 's' : ''}',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.white.withOpacity(0.9),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListView.builder(
+              shrinkWrap: true,
+              physics: NeverScrollableScrollPhysics(),
+              itemCount: marketBookings.length,
+              itemBuilder: (context, bookingIndex) {
+                return _buildBookingCard(marketBookings[bookingIndex], context);
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _toggleFilterExpanded() {
@@ -194,175 +290,361 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
   }
 
   Widget _buildBookingCard(dynamic booking, BuildContext context) {
-    final status = booking['status'];
-    final lotName = booking['lot']?['name'] ?? 'Unknown Lot';
-    final marketId = booking['lot']?['marketId'] ?? '';
-    final marketName = booking['lot']?['market']?['name'] ?? 'Unknown Market';
-    final startDate = DateTime.parse(booking['startDate']);
-    final endDate = DateTime.parse(booking['endDate']);
-    final duration = endDate.difference(startDate).inDays + 1;
-    final lotWidth = booking['lot']?['shape']?['width']?.toDouble() ?? 0.0;
-    final lotHeight = booking['lot']?['shape']?['height']?.toDouble() ?? 0.0;
-    final lotSize = '${lotWidth}x${lotHeight} cm';
-    final lotPrice = booking['lot']?['price']?.toDouble() ?? 0.0;
-    final totalPrice = lotPrice * duration;
-    final paymentStatus = booking['paymentStatus'] ?? 'Waiting for payment';
-    final paymentMethod = booking['paymentMethod'] ?? 'QR Code / Bank Transfer';
-    final paymentDue = booking['paymentDue'] ?? 'Within 7 days';
+    final safeBooking = safeMapCast(booking);
+    final safeLot = safeMapCast(safeBooking['lot']);
+    final safeMarket = safeMapCast(safeLot['market']);
+    final safeShape = safeMapCast(safeLot['shape']);
 
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ContractDetailScreen(contract: {
-              ...booking,
-              'id': booking['id'] ?? 'N/A',
-              'status': status,
-              'lot': {
-                ...booking['lot'],
-                'market': {
-                  'name': marketName,
-                  'id': marketId,
-                },
-              },
-              'tenant': {
-                'name': 'Loading...',
-                'email': 'N/A',
-                'phone': 'N/A',
-                'id': booking['tenantId'],
-              },
-              'startDate': booking['startDate'],
-              'endDate': booking['endDate'],
-            }),
+    final status = safeBooking['status'] ?? 'UNKNOWN';
+    final lotName = safeLot['name'] ?? 'Unknown Lot';
+    final marketName = safeMarket['name'] ?? 'Unknown Market';
+    final startDate = DateTime.parse(
+        safeBooking['startDate'] ?? DateTime.now().toIso8601String());
+    final endDate = DateTime.parse(
+        safeBooking['endDate'] ?? DateTime.now().toIso8601String());
+    final duration = endDate.difference(startDate).inDays + 1;
+    final lotWidth = (safeShape['width'] ?? 0.0).toDouble();
+    final lotHeight = (safeShape['height'] ?? 0.0).toDouble();
+    final lotSize = '${lotWidth}x${lotHeight} cm';
+    final lotPrice = (safeLot['price'] ?? 0.0).toDouble();
+    final totalPrice = lotPrice * duration;
+    final paymentStatus = safeBooking['paymentStatus'] ?? 'PENDING';
+    final paymentMethod =
+        safeBooking['paymentMethod'] ?? 'QR Code / Bank Transfer';
+    final paymentDue = safeBooking['paymentDue'] ?? 'Within 7 days';
+    final paymentStatusColor = _getPaymentStatusColor(paymentStatus);
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Card(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: Theme.of(context).primaryColor.withOpacity(0.3),
+            width: 1.0,
           ),
-        );
-      },
-      child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Container(
-          width: double.infinity,
-          constraints: BoxConstraints(maxWidth: 570),
-          decoration: BoxDecoration(
-            color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(
-              color: Theme.of(context).dividerColor,
-              width: 1,
-            ),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(4),
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 12, 0, 8),
-                  child: RichText(
-                    text: TextSpan(
+        ),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ContractDetailScreen(
+                  contract: {
+                    ...safeBooking,
+                    'id': safeBooking['id'] ?? 'N/A',
+                    'status': status,
+                    'lot': {
+                      ...safeLot,
+                      'market': {
+                        ...safeMarket,
+                        'name': marketName,
+                      },
+                    },
+                  },
+                ),
+              ),
+            );
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Status Bar
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: _getStatusChipColor(status).withOpacity(0.1),
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(12),
+                    topRight: Radius.circular(12),
+                  ),
+                ),
+                padding: EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
                       children: [
-                        TextSpan(
-                          text: 'Lot Name: ',
-                          style: TextStyle(color: Colors.black87),
-                        ),
-                        TextSpan(
-                          text: lotName,
-                          style: TextStyle(
-                            color: Theme.of(context).primaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      ],
-                      style: TextStyle(fontSize: 16),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 0, 12, 0),
-                  child: Text(
-                    'Details of Booking',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 4, 12, 8),
-                  child: Text(
-                    '🔹 Market: $marketName',
-                    style: TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 4, 12, 16),
-                  child: Text(
-                    '🔹 Lot Size: $lotSize\n'
-                    '🔹 Rental Period: ${DateFormat('d MMM yyyy').format(startDate)} - ${DateFormat('d MMM yyyy').format(endDate)}\n'
-                    '🔹 Duration: $duration day${duration > 1 ? 's' : ''}\n'
-                    '🔹 Daily Price: ${NumberFormat('#,##0.00').format(lotPrice)} THB\n'
-                    '🔹 Total Price: ${NumberFormat('#,##0.00').format(totalPrice)} THB\n'
-                    '🔹 Payment Status: $paymentStatus\n'
-                    '🔹 Payment Method: $paymentMethod\n'
-                    '🔹 Payment Due: $paymentDue',
-                    style: TextStyle(fontSize: 14, color: Colors.black87),
-                  ),
-                ),
-                Divider(
-                  height: 2,
-                  thickness: 1,
-                  color: Theme.of(context).dividerColor,
-                ),
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 12, 12, 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.max,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: _getStatusChipColor(status).withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
                             color: _getStatusChipColor(status),
-                            width: 2,
+                            shape: BoxShape.circle,
                           ),
                         ),
-                        child: Align(
-                          alignment: Alignment.center,
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 8),
-                            child: Text(
-                              status,
-                              style: TextStyle(
-                                color: _getStatusChipColor(status),
-                              ),
-                            ),
+                        SizedBox(width: 8),
+                        Text(
+                          status,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: _getStatusChipColor(status),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (paymentStatus != 'VERIFIED')
+                      Container(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: paymentStatusColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: paymentStatusColor),
+                        ),
+                        child: Text(
+                          paymentStatus,
+                          style: TextStyle(
+                            color: paymentStatusColor,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),
-                      if (status == 'PENDING')
-                        ElevatedButton(
-                          onPressed: () => _cancelBooking(booking['id']),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                  ],
+                ),
+              ),
+
+              // Market Info
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      marketName,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Divider(),
+
+              // Booking Details
+              Padding(
+                padding: EdgeInsets.fromLTRB(16, 8, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Booking Details',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey.shade800,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+
+                    // Lot details
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.grid_view,
+                            title: 'Lot Name',
+                            value: lotName,
                           ),
-                          child: Text('Cancel Request'),
                         ),
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.straighten,
+                            title: 'Size',
+                            value: lotSize,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+
+                    // Date details
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.calendar_today,
+                            title: 'Start Date',
+                            value: DateFormat('d MMM yyyy').format(startDate),
+                          ),
+                        ),
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.calendar_month,
+                            title: 'End Date',
+                            value: DateFormat('d MMM yyyy').format(endDate),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+
+                    // Price details
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.timer,
+                            title: 'Duration',
+                            value: '$duration day${duration > 1 ? 's' : ''}',
+                          ),
+                        ),
+                        Expanded(
+                          child: _detailItem(
+                            context: context,
+                            icon: Icons.payments_outlined,
+                            title: 'Daily Price',
+                            value:
+                                '${NumberFormat('#,##0.00').format(lotPrice)} THB',
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 12),
+
+                    // Total and payment
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade100,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Total Price:',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              Text(
+                                '${NumberFormat('#,##0.00').format(totalPrice)} THB',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: Theme.of(context).primaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Icon(Icons.payment, size: 16, color: Colors.grey),
+                              SizedBox(width: 4),
+                              Text(
+                                'Method: $paymentMethod',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                            ],
+                          ),
+                          SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(Icons.access_time,
+                                  size: 16, color: Colors.grey),
+                              SizedBox(width: 4),
+                              Text(
+                                'Due: $paymentDue',
+                                style: TextStyle(color: Colors.grey.shade700),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // Action button
+              if (status == 'PENDING')
+                Container(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(12),
+                      bottomRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _cancelBooking(safeBooking['id']),
+                        icon: Icon(Icons.cancel_outlined),
+                        label: Text('Cancel Request'),
+                        style: ElevatedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          backgroundColor: Colors.red,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
+            ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _detailItem({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    required String value,
+  }) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon,
+            size: 18, color: Theme.of(context).primaryColor.withOpacity(0.7)),
+        SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+              Text(
+                value,
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -375,6 +657,23 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
       case 'REJECTED':
         return Colors.red;
       case 'CANCELLED':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  Color _getPaymentStatusColor(String status) {
+    switch (status.toUpperCase()) {
+      case 'PENDING':
+        return Colors.orange;
+      case 'PAID':
+        return Colors.blue;
+      case 'VERIFIED':
+        return Colors.green;
+      case 'REJECTED':
+        return Colors.red;
+      case 'EXPIRED':
         return Colors.grey;
       default:
         return Colors.grey;
@@ -456,166 +755,266 @@ class _TenantBookingsPageState extends State<TenantBookingsPage> {
     }
   }
 
-  Widget _buildEmptyState(String message) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.event_busy,
-            size: 100,
-            color: Colors.grey.shade300,
-          ),
-          SizedBox(height: 16),
-          Text(
-            message,
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.grey.shade600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final bookingProvider = Provider.of<BookingProvider>(context);
-
-    // All possible statuses
     final statuses = ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'];
 
-    return DefaultTabController(
-      length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('My Bookings'),
-          backgroundColor: Colors.green,
-          elevation: 0,
-          actions: [
-            IconButton(
-              icon: Icon(_isFilterExpanded
-                  ? Icons.filter_list_off
-                  : Icons.filter_list),
-              onPressed: _toggleFilterExpanded,
-              tooltip: 'Filter Bookings',
+    return FocusDetector(
+      onFocusGained: () {
+        _fetchAndGroupBookings();
+      },
+      child: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(
+              'My Bookings',
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
-          ],
-          bottom: TabBar(
-            tabs: [
-              Tab(text: 'Active Bookings'),
-              Tab(text: 'Booking History'),
-            ],
-          ),
-        ),
-        body: Column(
-          children: [
-            // Filter Section
-            AnimatedContainer(
-              duration: Duration(milliseconds: 300),
-              height: _isFilterExpanded ? null : 0,
-              child: SingleChildScrollView(
-                child: _isFilterExpanded
-                    ? Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: BookingFilter(
-                          statuses: statuses,
-                          markets: _markets,
-                          initialFilters: _filters,
-                          onFilterChanged: _onFilterChanged,
-                        ),
-                      )
-                    : SizedBox.shrink(),
+            backgroundColor: Colors.green.shade700,
+            elevation: 0,
+            actions: [
+              IconButton(
+                icon: Icon(
+                  _isFilterExpanded ? Icons.filter_list_off : Icons.filter_list,
+                  color: Colors.white,
+                ),
+                onPressed: _toggleFilterExpanded,
+                tooltip: 'Filter Bookings',
               ),
-            ),
-
-            // Active Filter Indicators
-            if (_filters.isNotEmpty)
-              Container(
-                color: Colors.grey.shade100,
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Row(
-                  children: [
-                    Icon(Icons.filter_alt, size: 16, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text(
-                      'Filters Applied: ${_filters.length}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.green,
+              IconButton(
+                icon: Icon(Icons.refresh, color: Colors.white),
+                onPressed: () {
+                  _fetchAndGroupBookings();
+                },
+              ),
+            ],
+            bottom: PreferredSize(
+              preferredSize: Size.fromHeight(kToolbarHeight),
+              child: Container(
+                color: Colors.green.shade700,
+                child: TabBar(
+                  indicatorColor: Colors.white,
+                  indicatorWeight: 3,
+                  labelColor: Colors.white,
+                  unselectedLabelColor: Colors.white.withOpacity(0.7),
+                  tabs: [
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.pending_actions),
+                          SizedBox(width: 8),
+                          Text('Active'),
+                        ],
                       ),
                     ),
-                    Spacer(),
-                    TextButton(
-                      onPressed: () {
-                        setState(() {
-                          _filters = {};
-                        });
-                        _applyFilters();
-                      },
-                      child: Text('Clear All'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red,
-                        padding: EdgeInsets.symmetric(horizontal: 8),
+                    Tab(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.history),
+                          SizedBox(width: 8),
+                          Text('History'),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
-
-            // Booking Lists
-            Expanded(
-              child: TabBarView(
-                children: [
-                  // Active Bookings Tab
-                  bookingProvider.isLoading
-                      ? Center(child: CircularProgressIndicator())
-                      : _activeBookings.isEmpty
-                          ? _buildEmptyState('No active or pending bookings')
-                          : RefreshIndicator(
-                              onRefresh: () async {
-                                await bookingProvider.fetchTenantBookings();
+            ),
+          ),
+          body: _isLoading
+              ? Center(child: CircularProgressIndicator())
+              : Column(
+                  children: [
+                    AnimatedContainer(
+                      duration: Duration(milliseconds: 300),
+                      height: _isFilterExpanded ? null : 0,
+                      curve: Curves.easeInOut,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: _isFilterExpanded
+                            ? [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 4,
+                                  offset: Offset(0, 2),
+                                )
+                              ]
+                            : [],
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: SingleChildScrollView(
+                          child: _isFilterExpanded
+                              ? Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Filter Bookings',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade700,
+                                      ),
+                                    ),
+                                    SizedBox(height: 16),
+                                    BookingFilter(
+                                      statuses: statuses,
+                                      markets: _markets,
+                                      initialFilters: _filters,
+                                      onFilterChanged: _onFilterChanged,
+                                    ),
+                                  ],
+                                )
+                              : SizedBox.shrink(),
+                        ),
+                      ),
+                    ),
+                    if (_filters.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Colors.green.shade100,
+                              width: 1,
+                            ),
+                          ),
+                        ),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.filter_alt,
+                                size: 16,
+                                color: Colors.green.shade800,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${_filters.entries.length} ${_filters.entries.length == 1 ? 'filter' : 'filters'} applied',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.green.shade800,
+                                ),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () {
                                 setState(() {
-                                  _allBookings = bookingProvider.bookings;
-                                  // Extract unique market names
-                                  _markets = _extractMarketNames(_allBookings);
+                                  _filters = {};
+                                  _isFilterExpanded = false;
                                 });
                                 _applyFilters();
                               },
-                              child: ListView.builder(
-                                itemCount: _activeBookings.length,
-                                itemBuilder: (context, index) {
-                                  return _buildBookingCard(
-                                      _activeBookings[index], context);
-                                },
+                              icon: Icon(Icons.close, size: 16),
+                              label: Text('Clear All'),
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.red.shade700,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(color: Colors.red.shade200),
+                                ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _activeBookings.isEmpty
+                              ? _buildEmptyState(
+                                  'No active or pending bookings')
+                              : RefreshIndicator(
+                                  onRefresh: () => _fetchAndGroupBookings(),
+                                  child: _buildBookingsList(
+                                      _groupBookingsByMarket(_activeBookings)),
+                                ),
+                          _historyBookings.isEmpty
+                              ? _buildEmptyState('No booking history yet')
+                              : RefreshIndicator(
+                                  onRefresh: () => _fetchAndGroupBookings(),
+                                  child: _buildBookingsList(
+                                      _groupBookingsByMarket(_historyBookings)),
+                                ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
 
-                  // Booking History Tab
-                  bookingProvider.isLoading
-                      ? Center(child: CircularProgressIndicator())
-                      : _historyBookings.isEmpty
-                          ? _buildEmptyState('No past bookings')
-                          : RefreshIndicator(
-                              onRefresh: () async {
-                                await bookingProvider.fetchTenantBookings();
-                                setState(() {
-                                  _allBookings = bookingProvider.bookings;
-                                  // Extract unique market names
-                                  _markets = _extractMarketNames(_allBookings);
-                                });
-                                _applyFilters();
-                              },
-                              child: ListView.builder(
-                                itemCount: _historyBookings.length,
-                                itemBuilder: (context, index) {
-                                  return _buildBookingCard(
-                                      _historyBookings[index], context);
-                                },
-                              ),
-                            ),
-                ],
+  Widget _buildEmptyState(String message) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.calendar_month_outlined,
+                size: 80,
+                color: Colors.green.shade700,
+              ),
+            ),
+            SizedBox(height: 32),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade800,
+              ),
+            ),
+            SizedBox(height: 12),
+            Text(
+              'Pull down to refresh or tap the button below',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: _fetchAndGroupBookings,
+              icon: Icon(Icons.refresh_rounded),
+              label: Text('Refresh Now'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(30),
+                ),
+                elevation: 2,
               ),
             ),
           ],

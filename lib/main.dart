@@ -9,6 +9,7 @@ import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:market_lot_app/screen/auth_screen/auth_screen.dart';
 import 'package:market_lot_app/screen/main_navigation_screen.dart';
 import 'package:market_lot_app/provider/market_provider.dart';
+import 'package:market_lot_app/config/theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,27 +43,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Market Booking App',
+      title: 'Market Lot App',
+      theme: AppTheme.lightTheme,
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          // This disables the default hero animation for FABs
-          enableFeedback: true,
-        ),
-        fontFamily: 'Poppins',
-        primaryColor: Colors.green,
-        colorScheme: ColorScheme.light(primary: Colors.green),
-        tabBarTheme: TabBarTheme(
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicator: UnderlineTabIndicator(
-            borderSide: BorderSide(
-              width: 2,
-              color: Colors.white,
-            ),
-          ),
-        ),
-      ),
       home: AuthScreen(),
       routes: {
         '/auth': (context) => AuthScreen(),

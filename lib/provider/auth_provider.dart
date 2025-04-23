@@ -62,7 +62,10 @@ class AuthProvider with ChangeNotifier {
     DateTime? birthDate,
   ) async {
     _isLoading = true;
-    notifyListeners();
+    // Delay the notification to avoid build phase conflicts
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
 
     try {
       final response = await http.post(
@@ -96,7 +99,10 @@ class AuthProvider with ChangeNotifier {
       _errorMessage = 'An error occurred. Please try again.';
     } finally {
       _isLoading = false;
-      notifyListeners();
+      // Delay the notification to avoid build phase conflicts
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 

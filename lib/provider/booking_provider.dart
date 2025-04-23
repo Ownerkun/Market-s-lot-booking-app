@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
@@ -115,14 +117,15 @@ class BookingProvider with ChangeNotifier {
   // Fetch bookings for a tenant
   Future<void> fetchTenantBookings() async {
     _isLoading = true;
-    notifyListeners();
 
-    final token = await _authProvider.getToken(); // Use decrypted token
+    final token = await _authProvider.getToken();
 
     if (token == null) {
       _errorMessage = 'No token found. Please log in.';
       _isLoading = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
       return;
     }
 
@@ -141,7 +144,7 @@ class BookingProvider with ChangeNotifier {
         _errorMessage = null;
       } else if (response.statusCode == 401) {
         _errorMessage = 'Session expired. Please log in again.';
-        await _authProvider.logout(); // Log out if token is invalid
+        await _authProvider.logout();
       } else {
         _errorMessage = 'Failed to fetch bookings: ${response.body}';
       }
@@ -149,7 +152,9 @@ class BookingProvider with ChangeNotifier {
       _errorMessage = 'Failed to fetch bookings: $e';
     } finally {
       _isLoading = false;
-      notifyListeners();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        notifyListeners();
+      });
     }
   }
 
@@ -558,6 +563,136 @@ class BookingProvider with ChangeNotifier {
       });
     } else {
       throw Exception('Failed to fetch tenant details');
+    }
+  }
+
+  Future<bool> submitPaymentProof(
+    String bookingId,
+    String paymentMethod,
+    File paymentProof,
+  ) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final token = await _authProvider.getToken();
+    if (token == null) {
+      _errorMessage = 'No token found. Please log in.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
+    final url = Uri.parse('$_baseUrl/$bookingId/payment');
+    var request = http.MultipartRequest('POST', url);
+
+    // Add headers
+    request.headers['Authorization'] = 'Bearer $token';
+
+    // Add fields
+    request.fields['paymentMethod'] = paymentMethod;
+
+    // Add file
+    var fileStream = http.ByteStream(paymentProof.openRead());
+    var length = await paymentProof.length();
+    var multipartFile = http.MultipartFile(
+      'paymentProof',
+      fileStream,
+      length,
+      filename: paymentProof.path.split('/').last,
+    );
+    request.files.add(multipartFile);
+
+    try {
+      var response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        // Parse the response
+        final responseData = json.decode(responseBody);
+
+        // Update local booking state if needed
+        final index = _bookings.indexWhere((b) => b['id'] == bookingId);
+        if (index != -1) {
+          _bookings[index] = {
+            ..._bookings[index],
+            'paymentStatus': 'PAID',
+            'paymentMethod': paymentMethod,
+            'paymentProofUrl': responseData['paymentProof'] ?? '',
+          };
+        }
+
+        _errorMessage = null;
+        return true;
+      } else if (response.statusCode == 400) {
+        final error = json.decode(responseBody);
+        _errorMessage = error['message'] ?? 'Payment submission failed';
+        return false;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout();
+        return false;
+      } else {
+        _errorMessage = 'Failed to submit payment: ${response.statusCode}';
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Failed to submit payment: $e';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> verifyPayment(
+    String bookingId,
+    bool isVerified, {
+    String? reason,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    final token = await _authProvider.getToken();
+    if (token == null) {
+      _errorMessage = 'No token found. Please log in.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
+    final url = Uri.parse('$_baseUrl/$bookingId/verify-payment');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+
+    try {
+      final response = await http.put(
+        url,
+        headers: headers,
+        body: jsonEncode({
+          'isVerified': isVerified,
+          if (reason != null) 'reason': reason,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        _errorMessage = null;
+        return true;
+      } else if (response.statusCode == 401) {
+        _errorMessage = 'Session expired. Please log in again.';
+        await _authProvider.logout();
+        return false;
+      } else {
+        _errorMessage = 'Failed to verify payment: ${response.body}';
+        return false;
+      }
+    } catch (e) {
+      _errorMessage = 'Failed to verify payment: $e';
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 }
