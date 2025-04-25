@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:market_lot_app/provider/auth_provider.dart';
 import 'package:intl/intl.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class AuthScreen extends StatefulWidget {
   @override
@@ -21,10 +23,22 @@ class _AuthScreenState extends State<AuthScreen>
   String? _userRole;
   DateTime? _birthDate;
 
+  String? _selectedProvince;
+  String? _selectedDistrict;
+  String? _selectedSubdistrict;
+  List<String> _provinces = [];
+  List<String> _districts = [];
+  List<String> _subdistricts = [];
+  List<dynamic> _provincesData = [];
+  List<dynamic> _districtsData = [];
+  List<dynamic> _subdistrictsData = [];
+
   bool get isAdmin => _userRole == 'ADMIN';
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
+
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -37,6 +51,9 @@ class _AuthScreenState extends State<AuthScreen>
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
     _animationController.forward();
+
+    print('Initializing AuthScreen...'); // Debug
+    _fetchProvinces();
   }
 
   @override
@@ -47,6 +64,94 @@ class _AuthScreenState extends State<AuthScreen>
     _firstNameController.dispose();
     _lastNameController.dispose();
     super.dispose();
+  }
+
+  Future<void> _fetchProvinces() async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'https://raw.githubusercontent.com/kongvut/thai-province-data/master/api_province.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        setState(() {
+          _provincesData = data;
+          _provinces = data.map((item) => item['name_en'] as String).toList();
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load provinces: $e')),
+      );
+    }
+  }
+
+  Future<void> _fetchDistricts(String province) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'https://raw.githubusercontent.com/kongvut/thai-province-data/master/api_amphure.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final provinceId = _provincesData.firstWhere(
+          (item) => item['name_en'] == province,
+          orElse: () => null,
+        )?['id'];
+
+        if (provinceId != null) {
+          setState(() {
+            _districtsData = data
+                .where((item) => item['province_id'] == provinceId)
+                .toList();
+            _districts = _districtsData
+                .map((item) => item['name_en'] as String)
+                .toList();
+            _selectedDistrict = null;
+            _selectedSubdistrict = null;
+            _subdistricts = [];
+          });
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load districts: $e')),
+      );
+    }
+  }
+
+  Future<void> _fetchSubdistricts(String province, String district) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+            'https://raw.githubusercontent.com/kongvut/thai-province-data/master/api_tambon.json'),
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = json.decode(response.body);
+        final districtId = _districtsData.firstWhere(
+          (item) => item['name_en'] == district,
+          orElse: () => null,
+        )?['id'];
+
+        if (districtId != null) {
+          setState(() {
+            _subdistrictsData =
+                data.where((item) => item['amphure_id'] == districtId).toList();
+            _subdistricts = _subdistrictsData
+                .map((item) => item['name_en'] as String)
+                .toList();
+            _selectedSubdistrict = null;
+          });
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load subdistricts: $e')),
+      );
+    }
   }
 
   void _toggleAuthMode() {
@@ -61,6 +166,32 @@ class _AuthScreenState extends State<AuthScreen>
     if (!_formKey.currentState!.validate()) {
       return;
     }
+
+    // For registration, additional validation for required fields
+    if (!isLogin) {
+      if (_birthDate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Please select your birth date'),
+              backgroundColor: Colors.red),
+        );
+        return;
+      }
+      if (_selectedProvince == null ||
+          _selectedDistrict == null ||
+          _selectedSubdistrict == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Please complete your address information'),
+              backgroundColor: Colors.red),
+        );
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
 
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
@@ -81,13 +212,17 @@ class _AuthScreenState extends State<AuthScreen>
           return;
         }
 
+        // All fields are validated, proceed with registration
         await authProvider.register(
           _emailController.text.trim(),
           _passwordController.text.trim(),
           _selectedRole!,
           _firstNameController.text.trim(),
           _lastNameController.text.trim(),
-          _birthDate,
+          _birthDate!, // Safe to use ! as we validated it above
+          _selectedProvince!,
+          _selectedDistrict!,
+          _selectedSubdistrict!,
         );
       }
 
@@ -108,6 +243,12 @@ class _AuthScreenState extends State<AuthScreen>
           backgroundColor: Colors.red,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -466,6 +607,98 @@ class _AuthScreenState extends State<AuthScreen>
                                     return null;
                                   },
                                 ),
+                                SizedBox(height: 16),
+                                Text(
+                                  'Address',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                                SizedBox(height: 8),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedProvince,
+                                  decoration: _buildInputDecoration(
+                                      'Province', Icons.location_city),
+                                  items: _provinces.map((String province) {
+                                    return DropdownMenuItem<String>(
+                                      value: province,
+                                      child: Text(province),
+                                    );
+                                  }).toList(),
+                                  onChanged: (String? newValue) {
+                                    print(
+                                        'Province selected: $newValue'); // Debug
+                                    if (newValue != null) {
+                                      setState(() {
+                                        _selectedProvince = newValue;
+                                        _selectedDistrict = null;
+                                        _selectedSubdistrict = null;
+                                        _subdistricts = [];
+                                      });
+                                      _fetchDistricts(newValue);
+                                    }
+                                  },
+                                  validator: (value) => value == null
+                                      ? 'Please select a province'
+                                      : null,
+                                  isExpanded: true,
+                                ),
+                                SizedBox(height: 16),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedDistrict,
+                                  decoration: _buildInputDecoration(
+                                      'District', Icons.location_on),
+                                  items: _districts.map((String district) {
+                                    return DropdownMenuItem<String>(
+                                      value: district,
+                                      child: Text(district),
+                                    );
+                                  }).toList(),
+                                  onChanged: _selectedProvince == null
+                                      ? null
+                                      : (String? newValue) {
+                                          if (newValue != null) {
+                                            setState(() {
+                                              _selectedDistrict = newValue;
+                                              _selectedSubdistrict = null;
+                                            });
+                                            _fetchSubdistricts(
+                                                _selectedProvince!, newValue);
+                                          }
+                                        },
+                                  validator: (value) => value == null
+                                      ? 'Please select a district'
+                                      : null,
+                                  isExpanded: true,
+                                ),
+                                SizedBox(height: 16),
+                                DropdownButtonFormField<String>(
+                                  value: _selectedSubdistrict,
+                                  decoration: _buildInputDecoration(
+                                      'Subdistrict', Icons.map),
+                                  items:
+                                      _subdistricts.map((String subdistrict) {
+                                    return DropdownMenuItem<String>(
+                                      value: subdistrict,
+                                      child: Text(subdistrict),
+                                    );
+                                  }).toList(),
+                                  onChanged: _selectedDistrict == null
+                                      ? null
+                                      : (String? newValue) {
+                                          if (newValue != null) {
+                                            setState(() {
+                                              _selectedSubdistrict = newValue;
+                                            });
+                                          }
+                                        },
+                                  validator: (value) => value == null
+                                      ? 'Please select a subdistrict'
+                                      : null,
+                                  isExpanded: true,
+                                ),
                               ],
 
                               // Forgot Password (only for login)
@@ -498,7 +731,7 @@ class _AuthScreenState extends State<AuthScreen>
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
-                                  onPressed: _submit,
+                                  onPressed: _isLoading ? null : _submit,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade600,
                                     foregroundColor: Colors.white,
@@ -508,14 +741,27 @@ class _AuthScreenState extends State<AuthScreen>
                                     ),
                                     elevation: 2,
                                   ),
-                                  child: Text(
-                                    isLogin ? 'Sign In' : 'Create Account',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
+                                  child: _isLoading
+                                      ? SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            valueColor:
+                                                AlwaysStoppedAnimation<Color>(
+                                                    Colors.white),
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Text(
+                                          isLogin
+                                              ? 'Sign In'
+                                              : 'Create Account',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
                                 ),
                               ),
 

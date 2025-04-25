@@ -13,6 +13,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _birthDateController = TextEditingController();
+  final _provinceController = TextEditingController();
+  final _districtController = TextEditingController();
+  final _subdistrictController = TextEditingController();
+  final _postalCodeController = TextEditingController();
   DateTime? _selectedDate;
 
   @override
@@ -25,6 +29,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     _firstNameController.text = authProvider.userProfile?['firstName'] ?? '';
     _lastNameController.text = authProvider.userProfile?['lastName'] ?? '';
+    _provinceController.text = authProvider.userProfile?['province'] ?? '';
+    _districtController.text = authProvider.userProfile?['district'] ?? '';
+    _subdistrictController.text =
+        authProvider.userProfile?['subdistrict'] ?? '';
+    _postalCodeController.text = authProvider.userProfile?['postalCode'] ?? '';
 
     String? birthDateString = authProvider.userProfile?['birthDate'];
     if (birthDateString != null && birthDateString.isNotEmpty) {
@@ -82,6 +91,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           firstName: _firstNameController.text,
           lastName: _lastNameController.text,
           birthDate: _selectedDate,
+          province: _provinceController.text,
+          district: _districtController.text,
+          subdistrict: _subdistrictController.text,
+          postalCode: _postalCodeController.text,
         );
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -207,6 +220,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 onTap: _selectDate,
                 validator: (value) =>
                     value!.isEmpty ? 'Please select your birth date' : null,
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _provinceController,
+                decoration: _buildInputDecoration('Province', null),
+                validator: (value) =>
+                    value!.isEmpty ? 'Please enter your province' : null,
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _districtController,
+                decoration: _buildInputDecoration('District', null),
+                validator: (value) =>
+                    value!.isEmpty ? 'Please enter your district' : null,
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _subdistrictController,
+                decoration: _buildInputDecoration('Subdistrict', null),
+                validator: (value) =>
+                    value!.isEmpty ? 'Please enter your subdistrict' : null,
+              ),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _postalCodeController,
+                decoration: _buildInputDecoration('Postal Code', null),
+                keyboardType: TextInputType.number,
+                validator: (value) =>
+                    value!.isEmpty ? 'Please enter your postal code' : null,
               ),
               SizedBox(height: 32),
 

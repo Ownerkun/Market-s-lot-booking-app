@@ -60,9 +60,11 @@ class AuthProvider with ChangeNotifier {
     String firstName,
     String lastName,
     DateTime? birthDate,
+    String? province,
+    String? district,
+    String? subdistrict,
   ) async {
     _isLoading = true;
-    // Delay the notification to avoid build phase conflicts
     WidgetsBinding.instance.addPostFrameCallback((_) {
       notifyListeners();
     });
@@ -78,6 +80,9 @@ class AuthProvider with ChangeNotifier {
           'firstName': firstName,
           'lastName': lastName,
           'birthDate': birthDate?.toIso8601String(),
+          'province': province,
+          'district': district,
+          'subdistrict': subdistrict,
         }),
       );
 
@@ -85,7 +90,6 @@ class AuthProvider with ChangeNotifier {
         final Map<String, dynamic> data = json.decode(response.body);
         if (data.containsKey('data') && data['data'] != null) {
           _userRole = role;
-          // Registration successful, now log the user in
           await login(email, password);
         } else {
           _errorMessage = 'Registration failed.';
@@ -99,7 +103,6 @@ class AuthProvider with ChangeNotifier {
       _errorMessage = 'An error occurred. Please try again.';
     } finally {
       _isLoading = false;
-      // Delay the notification to avoid build phase conflicts
       WidgetsBinding.instance.addPostFrameCallback((_) {
         notifyListeners();
       });
@@ -253,10 +256,13 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> updateProfile({
-    String? firstName,
-    String? lastName,
-    DateTime? birthDate,
-    String? profilePicture,
+    required String firstName,
+    required String lastName,
+    required DateTime? birthDate,
+    required String province,
+    required String district,
+    required String subdistrict,
+    required String postalCode,
   }) async {
     final url = Uri.parse('$_baseAuthUrl/profile/$_userId');
     final headers = {
@@ -275,7 +281,16 @@ class AuthProvider with ChangeNotifier {
 
       if (response.statusCode == 200) {
         final responseData = json.decode(response.body);
-        _userProfile = responseData['data']['profile'];
+        _userProfile = {
+          ..._userProfile ?? {},
+          'firstName': firstName,
+          'lastName': lastName,
+          'birthDate': birthDate?.toIso8601String(),
+          'province': province,
+          'district': district,
+          'subdistrict': subdistrict,
+          'postalCode': postalCode,
+        };
 
         notifyListeners();
       } else if (response.statusCode == 404) {
@@ -432,6 +447,9 @@ class AuthProvider with ChangeNotifier {
           firstName ?? '',
           lastName ?? '',
           birthDate,
+          null,
+          null,
+          null,
         );
       }
 

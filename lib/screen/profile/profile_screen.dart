@@ -165,7 +165,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ElevatedButton.icon(
                 onPressed: () async {
                   await authProvider.logout();
-                  Navigator.of(context).pushReplacementNamed('/');
+                  Navigator.of(context).pushReplacementNamed('/auth');
                 },
                 icon: Icon(Icons.logout, size: 20),
                 label: Text('Logout'),

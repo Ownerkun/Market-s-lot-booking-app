@@ -32,6 +32,7 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
 
   List<Map<String, dynamic>> get displayedBookings {
     try {
+      // For "All Markets", use all bookings without filtering
       final bookings = _selectedMarketId == null
           ? _bookingProvider.bookings
           : _bookingProvider.bookings
@@ -96,14 +97,12 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       final bookingProvider =
           Provider.of<BookingProvider>(context, listen: false);
-      final marketProvider =
-          Provider.of<MarketProvider>(context, listen: false);
 
       // Always load markets first
       await authProvider.fetchMarkets();
       _landlordMarkets = authProvider.markets;
 
-      // Load bookings - filtered by selected market if specified
+      // Load bookings - for "All Markets" we don't filter by marketId
       await bookingProvider.fetchLandlordBookings(marketId: _selectedMarketId);
 
       // Only fetch lots if a specific market is selected
@@ -115,8 +114,8 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
         // Update the main market provider's data
         _marketProvider = specificMarketProvider;
       } else {
-        // For "All Markets", we don't need to fetch lots (or fetch all if needed)
-        _marketProvider.lots.clear(); // Clear previous market's lots
+        // For "All Markets", clear previous market's lots
+        _marketProvider.lots.clear();
       }
     } catch (e) {
       if (mounted) {
@@ -157,7 +156,7 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
               '- Occupancy Rate: ${metrics['occupancyRate'].toStringAsFixed(1)}%');
           print('- Approved Bookings: ${metrics['approvedBookings']}');
           print(
-              '- Total Revenue: \$${metrics['totalRevenue'].toStringAsFixed(2)}');
+              '- Total Revenue: \THB${metrics['totalRevenue'].toStringAsFixed(2)}');
         } else {
           print('All Markets selected');
           print(
@@ -603,7 +602,7 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
                     Colors.green),
                 _buildSummaryCard(
                     'Total Revenue',
-                    '\$${metrics['totalRevenue'].toStringAsFixed(2)}',
+                    'THB${metrics['totalRevenue'].toStringAsFixed(2)}',
                     Icons.attach_money,
                     Colors.purple),
               ],
@@ -785,7 +784,7 @@ class _MarketReportScreenState extends State<MarketReportScreen> {
                     child: Text('${index + 1}'),
                   ),
                   title: Text(lot['name']),
-                  subtitle: Text('Revenue: \$${lot['revenue'] ?? 0}'),
+                  subtitle: Text('Revenue: THB${lot['revenue'] ?? 0}'),
                   trailing: Icon(Icons.trending_up, color: Colors.green),
                 );
               },
